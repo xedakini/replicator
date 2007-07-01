@@ -3,7 +3,7 @@ Type: string
 Default: 8080
 Description: Proxy server port:
  The proxy server will act on this port of the localhost.
- The default value of 8080 is a common value for a http proxy server.
+ The default value of 8080 is a common value for an http proxy server.
  If you have another http proxy running it is likely that you should should change this port.
 
 Template: http-replicator/telnet
@@ -11,7 +11,8 @@ Type: string
 Default: 8081
 Description: Telnet port:
  The proxy server can be monitored via telnet on this port.
- Make sure it is available.
+ This is disabled by entering a zero value.
+ Otherwise make sure the port is available or replicator will not start.
 
 Template: http-replicator/dir
 Type: string

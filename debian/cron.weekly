@@ -1,6 +1,6 @@
 #! /usr/bin/python
 #
-#  The <a href=http-replicator.html>replicator</a> http proxy server is especially useful for maintaining a <a href=http://www.debian.org>debian</a> package cache.
+#  The replicator <http-replicator.html> proxy server is especially useful for maintaining a debian <http://www.debian.org> package cache.
 #  Such caches tend to grow huge if nothing ever gets thrown away.
 #  This script is meant to be run as a (weekly?) cron task to delete the packages that are unlikely to be needed anymore.
 #  A list of deleted packages is mailed by cron to the system administrator.
@@ -12,9 +12,9 @@ import os, sys
 #  constants
 #
 #  Only two constants control this script.
-#  Obviously, the replicator cache directory [DIR] needs to be known in order locate the debian packages.
+#  Obviously, the replicator cache [DIR] needs to be known in order locate the debian packages.
 #  The constant [KEEP] determines how many versions of the same package are kept in cache.
-#  These settiongs are read from the <a href=http-replicator.conf.html>configuration file</a>.
+#  These settings are read from the configuration_file <http-replicator.conf.html>.
 #  A [KEEP] value of one will only keep the most recent package.
 #  This keeps the cache small in size but involves the risk that an older package has to be redownloaded when downgrading from a badly functionating successor.
 #  This simple cleaning algorithm obviously fails when different distributions are cached trough the same proxy.
@@ -31,36 +31,32 @@ execfile('/etc/http-replicator.conf')
 def main ():
 
 	if not KEEP:
-		return 0 # succes; exit silently
+		return # nothing to do
 
 	print 'cleaning http-replicator cache...'
 	print
-
 	deleted = 0 # nothing deleted initially
 	for root, dirs, files in os.walk(DIR): # scan replicator cache
-		debs = {}
+		debs = {} # start new dictionary for each directory
 
-		for file, extension in map(os.path.splitext, files):
+		for file, extension in map(os.path.splitext, files): # iterate over files
 			if extension == '.deb': # debian package found
-				program, version = file.split('_', 1) # package name split from version
+				program, version = file.split('_', 1) # split package name from version
 				debs.setdefault(program, []).append(version) # put package in dictionary
 
-		for program, versions in debs.items():
+		for program, versions in debs.items(): # iterate over packages
 			if len(versions) > KEEP: # too many versions present
-				versions.sort(lambda x, y: os.system('dpkg --compare-versions %s gt %s' % (x, y)) and 1 or -1) # sort list by version
+				versions.sort(lambda x, y: os.system('dpkg --compare-versions %s gt %s' % (x, y)) and 1 or -1) # sort by version
+				size = 0
 				for version in versions[KEEP:]:
 					file = os.path.join(root, '%s_%s.deb' % (program, version))
-					size = os.path.getsize(file) / 1024.
-					deleted += size # add filesize
-					if not os.getuid(): # if not run by root do nothing (dummy run)
-						os.remove(file) # delete old package
-				print '%8.1f %s %s [%s]' % (size, program, ','.join(versions[KEEP:]), ','.join(versions[:KEEP]))
-
+					size += os.path.getsize(file) / 1024.
+					os.getuid() or os.remove(file) # delete old package if possible
+				print '%6i %s kept %s deleted %s' % (size, program, ','.join(versions[:KEEP]), ','.join(versions[KEEP:]))
+				deleted += size # add filesize
 	print
-	print '%8.1f kB deleted' % deleted
-
-	return 0 # succes
+	print '%6i kB deleted' % deleted
 
 if __name__ == '__main__':
 
-	sys.exit(main())
+	main()

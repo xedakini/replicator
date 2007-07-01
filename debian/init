@@ -1,36 +1,37 @@
 #! /usr/bin/python
 #
-#  This module controls <a href=http-replicator.html>replicator</a> when it is run as a daemon.
+#  This module controls replicator <http-replicator.html> when it is run as a daemon.
 #  As usual the server is controlled by a single start/stop/restart parameter.
-#  The main reason to have a specialized script for this purpose is that this is the only way to check if the server is properly started.
-#  All alternatives loose control as soon as the server is detached from the parent process.
-#  For this method to work the replicator module should be somewhere in python's module path as HttpReplicator.py (as dashes are not allowed).
+#  The main reason to have a specialized script for this purpose is that this offers an easy way to check if the server is properly started.
+#  The usual disadvantage of a daemon starter implemented in python being slow does not apply because the server runs in python itself.
+#  For this method to work the replicator module should be somewhere in python's module path as HttpReplicator.py.
 
-import os, sys, pwd, HttpReplicator
+import HttpReplicator, os, sys, pwd
 
 #  constants
 #
 #  When the server as run as a daemon several things change compared to the manual case.
-#  The proxy port which is otherwise specified at the command line must be predefined.
-#  The user id should be changed from root into something harmless (security!).
-#  The cache directory (for which the new user must have write permission) must be specified.
-#  The process id of a running server must be stored somewhere in order to be able to stop it.
-#  The standard output must be redirected to a log file.
-#  All these settings are read from the configuration file <a href=http-replicator.conf.html>http-replicator.conf</a>.
+#  The proxy [PORT] which is otherwise specified on the command line must be predefined.
+#  The [USER] id should be changed from root into something harmless.
+#  The cache [DIR] (for which the new user must have write permission) must be specified.
+#  The process id of a running server must be stored in a [PID] file in order to be able to stop it.
+#  The stdout and stderr must be redirected to a [LOG] file.
+#  All these settings are read from the configuration_file <http-replicator.conf.html>.
 
 execfile('/etc/http-replicator.conf')
 
 #  function start
 #
 #  The [start] function is called in response to a start or restart request.
-#  It first reads the pidfile [PID] to check if the server isn't already running.
+#  It first reads the [PID] file to check if the server isn't already running.
 #  Then it opens [pidfile] for writing and [logfile] for reading and writing.
-#  Reading is necessairy in case output is viewed through a telnet session.
+#  Reading is necessary for the case that output is viewed through a telnet session.
 #  The working directory is changed into [DIR] and the user id of the process is changed into [USER].
 #  Because the [pidfile] and [logfile] objects were created before this they still have write permission.
 #  This is one of the benefits of starting the proxy through this specialized script.
 #
-#  Next two [Listener] instances are created; one for incoming http connections at [PORT] and one for telnet connections at [TELNET].
+#  The server [FLAGS] are set and two [Listener] instances are created; one for incoming http connections at [PORT] and one for telnet connections at [TELNET].
+#  Both get access permission for the same [IP] addresses.
 #  The process is forked to detach the daemon from the calling process.
 #  Finally the parent process stores the child's pid in the [pidfile] and returns success.
 #  The detached child process redirects stdout and stderr to the [logfile] and starts the [asyncore.loop].
@@ -38,12 +39,12 @@ execfile('/etc/http-replicator.conf')
 def start ():
 
 	print 'Starting HTTP proxy:',
-	if os.path.isfile(PID) and os.path.getsize(PID): # pidfile exists and is non-empty
+	if os.path.isfile(PID) and os.path.getsize(PID): # pidfile exists and is not empty
 		print 'already running'
 		return 1 # error
 	try:
-		if os.path.isfile(LOG):
-			os.rename(LOG, LOG+'.old')
+		if os.path.isfile(LOG) and os.path.getsize(LOG):
+			os.rename(LOG, LOG+'.old') # rotate log file
 		logfile = open(LOG, 'w+') # open for reading and writing
 		pidfile = open(PID, 'w') # open for writing
 
@@ -52,35 +53,37 @@ def start ():
 		os.setuid(pwd.getpwnam(USER)[2]) # change uid
 		os.umask(022) # set umask to -rw-r--r--
 
-		HttpReplicator.Listener(HttpReplicator.HttpClient, PORT) # watch for http connections
-		HttpReplicator.Listener(HttpReplicator.Telnet, TELNET) # watch for telnet connections
+		for attr in FLAGS + sys.argv[2:]:
+			assert attr in ('static','flat','debug'), 'invalid flag: "%s"' % attr
+			setattr(HttpReplicator.Http, attr, True)
 
-		pid = os.fork()
+		HttpReplicator.Listener(HttpReplicator.HttpClient, PORT, IP) # monitor http connections
+		if TELNET:
+			HttpReplicator.Listener(HttpReplicator.Telnet, TELNET, IP) # monitor telnet connections
+
+		pid = os.fork() # fork process
 		if pid: # parent process
 			pidfile.write(str(pid)) # store child's pid
 			pidfile.close()
-			print 'http-replicator.'
-			return 0 # success
+		else:
+			sys.stdout = sys.stderr = logfile # redirect output
+			HttpReplicator.asyncore.loop() # start main loop
 
 	except KeyError, error: # user does not exist
-		print 'error: no such user:', USER
-	except OSError, error:
-		print 'error:', error[1].lower()
-	except IOError, error:
-		print 'error:', error[1].lower()
-	except HttpReplicator.socket.error, error:
-		print 'error:', error[1].lower()
-	else: # all went well
-		sys.stdout = sys.stderr = logfile # redirect output
-		HttpReplicator.asyncore.loop(use_poll=1) # start main loop
+		print 'error: no such user: "%s"' % USER
+	except:
+		print 'error:', sys.exc_info()[1]
+	else:
+		print 'http-replicator.'
+		return 0
 
-	return 1 # error
+	return 1
 
 #  function stop
 #
 #  The [stop] function is called in response to a stop or restart request.
 #  It first reads the pidfile [PID] to check if the server is actually running.
-#  Then the process is killed and the pidfile is removed.
+#  If it is the process is killed and the pidfile is removed.
 
 def stop ():
 
@@ -93,54 +96,46 @@ def stop ():
 		os.remove(PID) # remove pidfile
 		os.kill(int(pid), 1) # kill process
 
-	except IOError, error:
-		print 'error:', error[1].lower()
-	except ValueError: # no integer in pidfile
-		print 'error: invalid pid in %s' % PID
-	except OSError, error:
-		print 'error:', error[1].lower()
-	else: # all went well
+	except ValueError: # pidfile does not contain an integer
+		print 'error: "%s" is not a valid process id' % pid
+	except:
+		print 'error:', sys.exc_info()[1]
+	else:
 		print 'http-replicator.'
 		return 0 # success
 
-	return 1 # error
+	return 1
 
 #  function main
 #
-#  The [main] function handles the parameters supplied on the command line.
+#  The [main] function handles the parameters specified on the command line.
 #  If no valid action is specified the user is notified and an error is returned.
-#  If the parameter is one of start, stop or restart the functions [stop] and/or [start] are called accordingly end their exit value is returned.
+#  If the parameter is one of start, stop or restart the functions [stop] and/or [start] are called accordingly and their return value is returned.
+#  Extra flags can optionally be added to those specified in the configuration file.
+#  For example 'init restart static' restarts the server in static mode, useful when no internet connection is available.
 #
 #  The process is forked almost immediately after the [main] call.
-#  This seems unnecessairy as the process is forked in the [start] function as well.
-#  However such a '<a href=http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/66012>double fork</a>' is common procedure to ensure full detachment of the child process under all circumstances.
-#  The parent process catches the return value of the child process by means of an [os.wait] call.
-#  This works because the return value of [main] is passed on to [sys.exit].
-#  The parent process re-returns the child's return value, and this time [sys.exit] hands it over to the caller of this script.
-#
-#  It is a strange, spiral-wise route from the [start] or [stop] function back to the user.
-#  If this bothers you the double fork is easily turned into a single one by removing the [elif os.fork():] block; this works just as well.
+#  This seems unnecessary as the process is forked in the [start] function as well.
+#  However such a 'double_fork' <http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/66012> is common procedure to ensure full detachment of the child process under all circumstances.
+#  The parent process catches the exit status of the child process via [os.wait] and simply re-returns it.
+#  If you don't like this the double fork is easily turned into a single one by removing the [elif os.fork():] block; this works just as well.
 #  The other direction is also possible: the double fork can be easily converted into a triple, quadruple, etc. fork by adding [elif os.fork():] blocks.
 #  There is absolutely no reason for doing this whatsoever.
 
 def main ():
 
-	if not sys.argv[1:]: # no arguments provided
-		print 'usage: %s {start|stop|restart}' % sys.argv[0]
-	elif os.fork(): # fork process
-		pid, status = os.wait() # wait for child process to end
-		return status >> 8 # return child's return value
-	elif sys.argv[1] == 'start':
-		return start() # start server
-	elif sys.argv[1] == 'stop':
-		return stop() # stop server
-	elif sys.argv[1] == 'restart':
-		return stop() or start() # restart server
-	else: # no valid argument provided
-		print 'not an option:', sys.argv[1]
+	options = {
+		'start': start,
+		'stop': stop,
+		'restart': lambda: stop() or start()}
 
-	return 1 # error
+	if len(sys.argv) < 2 or sys.argv[1] not in options:
+		sys.exit('usage: %s {%s} [flags]' % (sys.argv[0], '|'.join(options)))
+	elif os.fork(): # fork process
+		sys.exit(os.wait()[1] >> 8) # return child's return value
+	else:
+		sys.exit(options[sys.argv[1]]())
 
 if __name__ == '__main__':
 
-	sys.exit(main())
+	main()
