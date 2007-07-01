@@ -1,27 +1,43 @@
 #! /usr/bin/python
-#
-#  This module contains the main code for the replicator proxy server.
-#  The server uses the medusa <http://www.nightmare.com/medusa> framework, which (as of version 1.5.2) is part of python as module asyncore <http://www.python.org/doc/current/lib/module-asyncore.html>.
-#  Because of this the server runs as a single process, multiplexing I/O with its various client and server connections within a single process/thread.
-#  According to the readme <http://www.nightmare.com/medusa/README.html> this means it is capable of smoother and higher performance than most other servers, while placing a dramatically reduced load on the server machine.
+"""\
+Source: http-replicator
+=======================
+Gertjan van Zwieten <gertjanvanzwieten@fastmail.fm>
+v3.1, unreleased
 
+This module contains the main code for the replicator proxy server.
+The server uses the http://www.nightmare.com/medusa[medusa] framework,
+which (as of version 1.5.2) is part of python as module
+http://www.python.org/doc/current/lib/module-asyncore.html[asyncore].
+Because of this the server runs as a single process, multiplexing I/O
+with its various client and server connections within a single
+process/thread. According to the
+http://www.nightmare.com/medusa/README.html[readme] this means it is
+capable of smoother and higher performance than most other servers,
+while placing a dramatically reduced load on the server machine.
+"""
 import asyncore, socket, os, time, calendar, sys, re, optparse, logging
 
-#  LISTENER
-#
-#  Class [Listener] is a subclass of [asyncore.dispatcher].
-#  Its task is to monitor incoming requests at the specified [port] and create an instance of [HttpClient] for each one of them.
-#  As for all [dispatcher] objects it suffices to create the instance; it will automatically add itself to the [asyncore.socket_map] so it won't get garbage-collected.
-#  The main [asyncore.loop] takes care of the rest.
-#
-#  For security reasons the ip addresses for which incoming requests are accepted must be explicitly listed in the [iplist].
-#  The addresses may contain the ? and * wildcards for single and multiple digits.
-#  They are transformed into a single regular expression to create the [ipcheck] function.
-#  Whenever the [asyncore.loop] notices an incoming request the [handle_accept] member function is called.
-#  Here the caller address is checked against [ipcheck] and an instance of [HttpClient] is created if access is granted.
+
 
 class Listener (asyncore.dispatcher):
+	"""\
+Class `Listener` is a subclass of `asyncore.dispatcher`. Its task is
+to monitor incoming requests at the specified `port` and create an
+instance of `HttpClient` for each one of them. As for all `dispatcher`
+objects it suffices to create the instance; it will automatically add
+itself to the `asyncore.socket_map` so it won't get garbage-collected.
+The main `asyncore.loop` takes care of the rest.
 
+For security reasons the ip addresses for which incoming requests are
+accepted must be explicitly listed in the `iplist`. The addresses may
+contain the ? and \* wildcards for single and multiple digits. They are
+transformed into a single regular expression to create the `ipcheck`
+function. Whenever the `asyncore.loop` notices an incoming request the
+`handle_accept` member function is called. Here the caller address is
+checked against `ipcheck` and an instance of `HttpClient` is created
+if access is granted.
+"""
 	def __init__ (self, port, iplist):
 
 		asyncore.dispatcher.__init__(self) # original constructor
@@ -42,53 +58,69 @@ class Listener (asyncore.dispatcher):
 		else: # no permission for caller
 			logging.warning('blocked incoming request from %s:%i', *address) # log a warning
 
-#  HTTP
-#
-#  Class [Http] is a subclass of [asyncore.dispatcher] as well.
-#  It is not used on itself since it lacks two handling functions, [handle_header] and [handle_data], that are respectivily called after the http [header] and [data] are received.
-#  The [HttpClient] and [HttpServer] classes define these functions, and together handle communication between the calling http client and the called http server.
-#  Each of these refers to its counterpart via the [counterpart] variable.
-#  Since this is a cyclic reference special care is taken that this does not break the garbage collection scheme, like it happens in this <http://www.nightmare.com/medusa/memory-leaks.html> example.
-#
-#  The [Http] class handles everything that the http request from the client and the response from the server have in common:
-#  * The first line consists of three fields.
-#  * This is followed by a series of key: value lines.
-#  * All lines are terminated by CRLF, the last line of the header by a double CRLF.
-#  * This is followed by an optional message body.
-#  The top header line is split in a three element list and the rest of the header is transformed into a dictionary.
-#  Next [handle_header] is called.
-#  This function prepares the second part of the transmission and the main task of this proxy: caching data.
-#  When the connection is closed [handle_data] is called to finish this task.
-#
-#  Operation is as follows.
-#  Initially [sending] and [receiving] are false, which means replicator does not send any data and has not yet received a complete http header.
-#  When it has, this header is parsed in [handle_read] and [receiving] is set to true.
-#  After that data is collected in the [data] file object.
-#  It's left to [handle_header] to supply its [counterpart] with a possibly modified [header] string and set [sending] to true, using [set_header].
-#  This will make [writable] return true whenever there is unwritten data, either in [header] or [counterpart.data].
-#  The reason that the two halves are stored at different locations is that multiple clients can simultaneously require the same data, while each requiring its own header.
-#  When all data is written and the counterpart's [receiving] is false or the write [pointer] reached [end] the connection is closed.
-#
-#  The code is not as fail safe as one might think necessary.
-#  For example the top header line is split in a three element list without first checking if it actually contains three elements.
-#  This is because asyncore has its own mechanism for catching errors.
-#  Of course, when all clients and servers work by the book these errors don't occur.
-#  If one doesn't then asyncore catches the exception and calls the [handle_error] member function, which then closes the socket.
-#  The function is rewritten to crash in [intolerant] mode or otherwise log a traceback message.
-#
-#  The first nine constants can be controlled from the command line.
+
 
 class Http (asyncore.dispatcher):
+	"""\
+Class `Http` is a subclass of `asyncore.dispatcher` as well. It is not
+used on itself since it lacks two handling functions, `handle_header`
+and `handle_data`, that are respectivily called after the http
+`header` and `data` are received. The `HttpClient` and `HttpServer`
+classes define these functions, and together handle communication
+between the calling http client and the called http server. Each of
+these refers to its counterpart via the `counterpart` variable. Since
+this is a cyclic reference special care is taken that this does not
+break the garbage collection scheme, like it happens in
+http://www.nightmare.com/medusa/memory-leaks.html[this] example.
 
-	static = False # static mode: never check for modifications
-	flat = False # flat mode: save files in a single directory
+The `Http` class handles everything that the http request from the
+client and the response from the server have in common:
+
+* The first line consists of three fields.
+* This is followed by a series of key: value lines.
+* All lines are terminated by CRLF, the last line of the header by a
+  double CRLF.
+* This is followed by an optional message body.
+
+The top header line is split in a three element list and the rest of
+the header is transformed into a dictionary. Next `handle_header` is
+called. This function prepares the second part of the transmission and
+the main task of this proxy: caching data. When the connection is
+closed `handle_data` is called to finish this task.
+
+Operation is as follows. Initially `sending` and `receiving` are
+false, which means replicator does not send any data and has not yet
+received a complete http header. When it has, this header is parsed in
+`handle_read` and `receiving` is set to true. After that data is
+collected in the `data` file object. It's left to `handle_header` to
+supply its `counterpart` with a possibly modified `header` string and
+set `sending` to true, using `set_header`. This will make `writable`
+return true whenever there is unwritten data, either in `header` or
+`counterpart.data`. The reason that the two halves are stored at
+different locations is that multiple clients can simultaneously
+require the same data, while each requiring its own header. When all
+data is written and the counterpart's `receiving` is false or the
+write `pointer` reached `end` the connection is closed.
+
+The code is not as fail safe as one might think necessary. For example
+the top header line is split in a three element list without first
+checking if it actually contains three elements. This is because
+asyncore has its own mechanism for catching errors. Of course, when
+all clients and servers work by the book these errors don't occur. If
+one doesn't then asyncore catches the exception and calls the
+[handle_error] member function, which then closes the socket. The
+function is rewritten to crash in `intolerant` mode or otherwise log a
+traceback message.
+
+The first nine constants can be controlled from the command line.
+"""
 	debug = False # debug mode: log full tracebacks
 	intolerant = False # intolerant mode: crash on exceptions
 	external = None # external proxy address
 	external_auth = None # external proxy authorization
 	chunk = 65536 # maximum number of bytes to read and write in one chunk
 	maxhead = 600 # maximum line length in the http header to prevent server attacks
-	alias = {} # alternative cache dirs for special hosts
+	alias = [] # alternative cache dirs for special hosts
 
 	id = 0 # instance identification number
 	pointer = 0 # data write position
@@ -206,72 +238,71 @@ class Http (asyncore.dispatcher):
 	def handle_close (self):
 
 		self.close() # close socket and remove from asyncore map
-		self.counterpart = None # remove to break cyclic references
 		self.log.debug('closed')
 		if self.pointer > self.beg: # some data is sent
 			self.log.stat('received %i bytes', self.pointer - self.beg) # log statistics
 
 		self.handle_data() # call subclass function: handle_header
+		self.counterpart = None # remove to break cyclic references
 
-#  HTTPCLIENT
-#
-#  Class [HttpClient] is one of the two subclasses of [Http].
-#  Instances are created by the [Listener] instance for each http request that is made through the proxy server.
-#  Once the http header is received [handle_header] is called.
-#  Here the header is altered and the connection to the requested http server is made.
-#  In most cases no data follows and even if it does (post request) it is not further used so [handle_data] is empty.
-#
-#  An http client sends a different header to a proxy server than it does to a normal http server.
-#  The most important difference is that to a proxy the full url is sent, including http://host.
-#  Many servers require a relative path, so it is up to the proxy to make this right.
-#  Unless of course the request is forwarded to another proxy, in which case the url is not modified.
-#  If on the other hand the request already is relative, it is considered to be a direct request and replicator will act as a server.
-#  Another important change is to force a connection close after each single transfer.
-#  HTTP/1.1 supports persistent connections, meaning the connection is left open for following requests but this is not supported by replicator.
-#
-#  The second field of the [head] list contains the http request.
-#  The corresponding [handle_header_CMD] function is called from [handle_header] is it exists to take some response specific action.
-#  If this function returns an integer value this value is used to fake an http server response; no real connection is made in that case.
-#  This is used when replicator is configured not to contact the server for files in cache, or when it acts as a server.
-#
-#  The most important request is of course the GET request, handled in [handle_header_GET].
-#  Here the cache location is determined, based upon replicator's operating mode and optionally defined [alias] hosts.
-#  Next [downloads] is checked for running downloads that can be joined.
-#  Then the cache is checked for the requested file.
-#  If it is present it depends on the state of [static] if a '304 Not modified' response is faked or the server is contacted to check for a more recent version.
-#  If not, it depends on [direct] if the file is downloaded from the server or '404 Not found' is returned.
+
 
 class HttpClient (Http):
+	"""\
+Class `HttpClient` is one of the two subclasses of `Http`. Instances
+are created by the `Listener` instance for each http request that is
+made through the proxy server. Once the http header is received
+`handle_header` is called. Here the header is altered and the
+connection to the requested http server is made. In most cases no data
+follows and even if it does (post request) it is not further used so
+`handle_data` is empty.
 
-	spliturl = re.compile(r'^http:/+([^/:]*):*([^/]*)(.*)$').match # split url in http://(host):(port)(path)
+An http client sends a different header to a proxy server than it does
+to a normal http server. The most important difference is that to a
+proxy the full url is sent, including http://host. Many servers
+require a relative path, so it is up to the proxy to make this right.
+Unless of course the request is forwarded to another proxy, in which
+case the url is not modified. If on the other hand the request already
+is relative, it is considered to be a direct request and replicator
+will act as a server. Another important change is to force a
+connection close after each single transfer. HTTP/1.1 supports
+persistent connections, meaning the connection is left open for
+following requests but this is not supported by replicator.
+
+The second field of the `head` list contains the http request. The
+corresponding `handle_header_CMD` function is called from
+`handle_header` is it exists to take some response specific action. If
+this function returns an integer value this value is used to fake an
+http server response; no real connection is made in that case. This is
+used when replicator is configured not to contact the server for files
+in cache, or when it acts as a server.
+
+The most important request is of course the GET request, handled in
+`handle_header_GET`. Here the cache location is determined, based upon
+replicator's operating mode and optionally defined `alias` hosts. Next
+`downloads` is checked for running downloads that can be joined. Then
+the cache is checked for the requested file. If it is present it
+depends on the state of `static` if a '304 Not modified' response is
+faked or the server is contacted to check for a more recent version.
+If not, it depends on `direct` if the file is downloaded from the
+server or '404 Not found' is returned.
+"""
+	matchurl = re.compile(r'^http:/+([^/:]*):*([^/]*)(.*)$').match # split url in http://(host):(port)(path)
 	range = None
+	path = ''
 
 	def handle_header (self, head, body):
 
-		proxy = self.spliturl(head[1])
-		if proxy:
+		match = self.matchurl(head[1])
+		if match:
+			host, port, path = match.groups()
 			self.log.info('proxy request for %s', head[1])
-			host, port, path = proxy.groups() # parse url
-			port = int(port or 80) # use port 80 by default
-			self.path = host + path # save cache position
+			self.url = host + path # save cache position
 			self.direct = False
-			body['connection'] = 'close' # close connection after transfer
-			body['host'] = host # make sure the host is sent
-			body.pop('keep-alive', None)
-			body.pop('proxy-connection', None)
-			body.pop('accept-encoding', None) # no support for content encodings
-			body.pop('proxy-authorization', None)
-			if not self.external: # direct connection to remote host
-				head[1] = path # transform absolute url to a relative one
-			elif self.external_auth: # proxy requires authorization
-				body['proxy-authorization'] = self.external_auth # send authorization info
 		else:
 			self.log.info('direct request for %s', head[1])
-			self.path = head[1] # save cache position
-			if 'host' in body:
-				self.direct = 'http://' + body['host'] + head[1].rstrip('/') # save full url for file listings
-			else:
-				self.direct = '.' # fall back on relative url is host is not sent
+			self.url = head[1].strip('/') # save cache position
+			self.direct = True
 
 		self.counterpart = HttpServer(counterpart=self) # create counterpart
 
@@ -279,21 +310,36 @@ class HttpClient (Http):
 		response = hasattr(self, func) and getattr(self, func)(body) # request-specific action
 		if not response: # no server response prescribed; connect
 
+			self.log.debug('connecting to %s', host)
 			try:
-				assert proxy, 'direct request to hidden or unaccessible file'
-				self.log.debug('connecting to %s', host)
-				self.counterpart.create_socket(socket.AF_INET, socket.SOCK_STREAM) # create socket
-				self.counterpart.settimeout(30.) # give up after 30 seconds; only affects connect
 				if self.external: # forward request to an external proxy
-					self.counterpart.connect(self.external) # connect to proxy
+					host, port = self.external
 				else: # forward request to the server
+					port = int(port or '80')
 					assert port == 80 or port > 1024, 'illegal attempt to connect to port %i' % port # security
-					self.counterpart.connect((host, port)) # connect to server
+				for family, socktype, proto, canonname, sockaddr in socket.getaddrinfo(host, port, socket.AF_UNSPEC, socket.SOCK_STREAM):
+					self.log.debug('trying %s', sockaddr[0])
+					sock = socket.socket(family, socktype, proto)
+					sock.settimeout(30.)
+					if sock.connect_ex(sockaddr) == 0:
+						self.counterpart.set_socket(sock)
+						break
+				else:
+					assert False, 'no route to host'
 			except: # connection failed
 				exception, value, traceback = sys.exc_info() # get exception info
 				self.log.error('connection failed: %s', value) # log reason of failure
 				print >> self.counterpart.data, '<html><body><pre><h1>Service unavailable</h1></pre></body></html>'
 				response = 503 # service unavailable
+			else:
+				body['connection'] = 'close' # close connection after transfer
+				body['host'] = host # make sure the host is sent
+				body.pop('keep-alive', None)
+				body.pop('proxy-connection', None)
+				body.pop('accept-encoding', None) # no support for content encodings
+				body.pop('proxy-authorization', None)
+				if self.external_auth: # proxy requires authorization
+					body['proxy-authorization'] = self.external_auth # send authorization info
 
 		self.counterpart.set_header(head, body) # reconstruct header and set counterpart.sending to true
 
@@ -302,7 +348,28 @@ class HttpClient (Http):
 			body = {}
 			self.counterpart.handle_header(head, body) # manually call handle_header
 
+	def get_path (self, url):
+
+		path = url.replace('/', os.sep) or os.curdir
+
+		for pattern, replacement, static in self.alias:
+			if pattern.match(path):
+				if replacement == '(X)':
+					path = ''
+				elif replacement != '(H)':
+					path = pattern.sub(replacement, path, 1)
+				break
+		else:
+			static = False
+		if os.path.abspath(path) != os.path.realpath(path):
+			path = ''
+
+		return path, static
+
 	def handle_header_GET (self, body):
+
+		self.path, static = self.get_path(self.url)
+		self.log.debug('cache position: %s', self.path or '[none]')
 
 		range = 'range' in body and re.match(r'^bytes=(\d*)-(\d*)$', body.pop('range'))
 		if range: # partial data request
@@ -310,62 +377,50 @@ class HttpClient (Http):
 			self.range = beg or 'end-'+ end, beg and end or 'end-1' # translate values; file size 'end' yet unknown
 			self.log.info('requested range: bytes %s to %s' % self.range) # log request
 
-		head = ''
-		for tail in self.path.split('/'): # iterate over items in path
-			head = os.path.join(head, tail) # build target path
-			if head in self.alias: # path up till now hos an alias
-				head = self.alias[head] # replace by alias
-			elif os.path.islink(head) or tail.startswith('.'): # watch for symlinks and hidden files
-				return False # don't cache
-		if self.direct or not self.flat: # replicate full directory structure
-			if not tail or os.path.isdir(head): # filename missing
-				path = os.path.join(head, 'index.html') # use index.html by default
-			else: # head is a file
-				path = head # set as path
-		else: # flat mode; cache all files in current directory
-			if tail: # filename is known
-				path = tail # set as path
-			else: # filename unknown
-				return False # don't cache
+		if self.direct:
+			if os.path.isfile(self.path):
+				return 304
+			elif os.path.isdir(self.path):
+				if self.url:
+					self.url += '/'
+				if 'host' in body:
+					url = 'http://' + body['host'] + '/' + self.url
+					print >> self.counterpart.data, '<html><body><pre><h1>Index of %s</h1>' % url
+				else:
+					print >> self.counterpart.data, '<html><body><pre><h1>Index</h1>'
+					url = ''
+				print >> self.counterpart.data, '<b>%10s   %s</b>\n' % ('Size', 'Name')
+				for name in os.listdir(self.path): # iterate over directory contents
+					path, static = self.get_path(self.url + name)
+					if os.path.isdir(path): # path is a directory; append slash and skip size
+						print >> self.counterpart.data, '%10s' % '-', ' !'[static], '<a href="%s">%s/</a>' % (url + name, name)
+					elif os.path.isfile(path):
+						print >> self.counterpart.data, '%10i' % os.path.getsize(path), ' !'[static], '<a href="%s">%s</a>' % (url + name, name)
+				print >> self.counterpart.data, '</pre></body></html>'
+				return 200 # ok
+			else:
+				print >> self.counterpart.data, '<html><body><pre><h1>Not found</h1></pre></body></html>'
+				return 404 # not found
 
-		self.log.debug('cache position: %s', path) # path ok
-
-		if path in self.downloads: # requested file is currently being downloaded
-			self.counterpart = self.downloads[path] # make instance counterpart
+		if self.path in self.downloads: # requested file is currently being downloaded
+			self.counterpart = self.downloads[self.path] # make instance counterpart
 			self.counterpart.counterpart = self # change instance's counterpart to self
 			self.log.info('joined running download %i', self.counterpart.id)
 			return 200 # ok
-		elif os.path.isfile(path): # file is in cache
-			self.counterpart.path = path
-			if self.static or self.direct: # don't contact server
+
+		if os.path.isfile(self.path): # file is in cache
+			if static: # don't contact server
 				return 304 # fake not modified response; makes HttpServer serve from cache
-			else: # contact server to check for newer version
-				mtime = os.path.getmtime(path) # get cache date
-				value = body.get('if-modified-since') # get optional private cache date
-				if not value or mtime > calendar.timegm(time.strptime(value, self.timefmt)): # check the most recent
-					self.log.debug('checking modification since %s', time.ctime(mtime))
-					body['if-modified-since'] = time.strftime(self.timefmt, time.gmtime(mtime))
-		elif not self.direct: # file requested through the proxy is not in cache
-			self.counterpart.path = path
-			if self.static and 'if-modified-since' in body: # static mode and file is in a private cache
-				return 304 # not modified
-		elif os.path.isdir(head or os.curdir): # directly requested file is a directory; generate listing
-			print >> self.counterpart.data, '<html><body><pre><h1>Index of %s</h1>' % self.path
-			print >> self.counterpart.data, '<b>Name                                                     Size      Last modified</b>\n'
-			for tail in os.listdir(head or os.curdir): # iterate over directory contents
-				if tail.startswith('.'): # don't list hidden files
-					continue
-				path = os.path.join(head, tail) # create path
-				if os.path.isdir(path): # path is a directory; append slash and skip size
-					print >> self.counterpart.data, '<a href="%s/%s/">%-63s -' % (self.direct, tail, tail[:50]+'/</a>'),
-				else: # path is a file
-					print >> self.counterpart.data, '<a href="%s/%s">%-54s %10i' % (self.direct, tail, tail[:50]+'</a>', os.path.getsize(path)),
-				print >> self.counterpart.data, time.ctime(os.path.getmtime(path))
-			print >> self.counterpart.data, '</pre></body></html>'
-			return 200 # ok
-		else: # directly requested file is not in cache
-			print >> self.counterpart.data, '<html><body><pre><h1>Not found</h1></pre></body></html>'
-			return 404 # not found
+			mtime = os.path.getmtime(self.path) # get cache date
+			value = body.get('if-modified-since') # get optional private cache date
+			if not value or mtime > calendar.timegm(time.strptime(value, self.timefmt)): # check the most recent
+				self.log.debug('checking modification since %s', time.ctime(mtime))
+				body['if-modified-since'] = time.strftime(self.timefmt, time.gmtime(mtime))
+		elif static:
+			if not self.path:
+				return 503
+			if 'if-modified-since' in body:
+				return 304
 
 		return False # connect to server
 
@@ -381,31 +436,40 @@ class HttpClient (Http):
 
 		pass # no useful data on this side
 
-#  HTTPSERVER
-#
-#  Class [HttpServer] is the other subclass of [Http], the counterpart of [HttpClient].
-#  Instances of [HttpServer] are created by the [HttpClient.handle_header] function.
-#  The purpose of this class is to interpret the http server's response to the client's request and act accordingly, caching everything that can possibly be cached.
-#
-#  On server side, the first field of [head] contains the server response and just like in [HttpClient] the [handle_header_XXX] functions handle the different situations.
-#  Here a true return value means that a file is sent to the client, either from cache or downloaded from the server.
-#  In that case the response [header] is changed in a 200 or 206 response, depending on whether the client requested the entire file or only part of it.
-#  New downloads are added to the [download] dictionary so that they can be joined by other clients.
-#  They are removed again when the download is completed and the file is written to cache.
-#
-#  In [handle_close] the downloaded [data] is written to cache, after optional processing of chunked data.
-#  All kinds of things can go wrong here, but all this is handled by the global exception handler.
-#  Examples of possible errors are too long filenames and chunked data that does not comply with the protocol <http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1>.
-#  The cache location is prepared by the [prepare] member function.
-#  This function is similar to [os.makedirs] except that it deletes files that are blocking the way.
-#  These files may have been put in the wrong position when their request lacked a trailing slash.
+
 
 class HttpServer (Http):
+	"""\
+Class `HttpServer` is the other subclass of `Http`, the counterpart of
+`HttpClient`. Instances of `HttpServer` are created by the
+`HttpClient.handle_header` function. The purpose of this class is to
+interpret the http server's response to the client's request and act
+accordingly, caching everything that can possibly be cached.
 
+On server side, the first field of `head` contains the server response
+and just like in `HttpClient` the `handle_header_XXX` functions handle
+the different situations. Here a true return value means that a file
+is sent to the client, either from cache or downloaded from the
+server. In that case the response `header` is changed in a 200 or 206
+response, depending on whether the client requested the entire file or
+only part of it. New downloads are added to the `download` dictionary
+so that they can be joined by other clients. They are removed again
+when the download is completed and the file is written to cache.
+
+In `handle_close` the downloaded [data] is written to cache, after
+optional processing of chunked data. All kinds of things can go wrong
+here, but all this is handled by the global exception handler.
+Examples of possible errors are too long filenames and chunked data
+that does not comply with the
+http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1[protocol].
+The cache location is prepared by the `prepare` member function. This
+function is similar to `os.makedirs` except that it deletes files that
+are blocking the way. These files may have been put in the wrong
+position when their request lacked a trailing slash.
+"""
 	time = None # time as supplied by the server
-	chunked = False # transfer encoding
+	encoding = None # transfer encoding
 	size = 0 # filesize
-	path = '' # target file location
 
 	def handle_header (self, head, body):
 
@@ -430,8 +494,8 @@ class HttpServer (Http):
 					self.counterpart.end = self.size - 1 # not really necessary, might speed things up a bit
 					body['content-length'] = str(self.size)
 
-			if self.chunked:
-				body['transfer-encoding'] = 'chunked'
+			if self.encoding:
+				body['transfer-encoding'] = self.encoding
 
 			head[1] = str(response)
 			head[2] = self.message[response]
@@ -446,30 +510,22 @@ class HttpServer (Http):
 
 	def handle_header_200 (self, body):
 
-		if not self.path:
-			return False # no nothing
-
-		self.downloads[self.path] = self # cache this file
-
 		if 'content-length' in body:
 			self.size = int(body['content-length'])
 		if 'transfer-encoding' in body:
-			if body['transfer-encoding'].lower() == 'chunked': # chunked transfer encoding
-				self.chunked = True
-			else: # unknown encoding
-				self.log.warning('unsupported transfer encoding %(transfer-encoding)r, not cached', body)
-				del self.downloads[self.path] # don't cache this file
-				return False
+			self.encoding = body['transfer-encoding'].lower()
+		if self.receiving and self.counterpart.path:
+			self.downloads[self.counterpart.path] = self
 
 		self.log.info('serving file from remote host')
 		return True # modify header
 
 	def handle_header_304 (self, body):
 
-		if not os.path.isfile(self.path):
+		if not os.path.isfile(self.counterpart.path):
 			return False # do nothing
 
-		self.data = open(self.path, 'r') # read data from cache
+		self.data = open(self.counterpart.path, 'r') # read data from cache
 		self.data.seek(0,2) # move to end of file
 		self.size = self.data.tell()
 
@@ -479,45 +535,51 @@ class HttpServer (Http):
 	def handle_data (self):
 
 		self.receiving = False # all data received; client can close connection
-		if self.path in self.downloads: # data contains a downloaded file
-			del self.downloads[self.path]
+
+		if self.counterpart.path in self.downloads: # data is a downloaded file
+			self.log.stat('sent %i bytes', self.data.tell())
+			del self.downloads[self.counterpart.path]
 		else:
 			return
-
-		self.log.stat('sent %i bytes', self.data.tell())
-
-		if self.chunked: # chunked transfer; ignore size
+		if os.path.isdir(self.counterpart.path) or self.counterpart.path.endswith(os.sep):
+			self.log.info('file not cached: filename unknown')
+			return
+		if self.encoding == 'chunked': # chunked transfer; ignore size
 			self.log.debug('post processing chunked data')
-		elif self.size: # filesize is known
-			assert self.size == self.data.tell(), 'file not cached: size mismatch' # check size
-		else:
+		elif self.encoding:
+			self.log.info('file not cached: unsupported transfer encoding %r', self.encoding)
+			return
+		elif not self.size:
 			self.log.warning('unable to verify file size')
+		elif self.size != self.data.tell():
+			self.log.error('file not cached: size mismatch')
+			return
 
 		chunks = []
 		try:
 			self.data.seek(0) # move to beginning of file
-			if self.chunked:
+			if self.encoding == 'chunked':
 				chunksize = int(self.data.readline().split(';')[0], 16) # use chunk size from header
 			else:
 				chunksize = self.chunk
 			chunk = self.data.read(chunksize) # read first chunk
 			while chunk: # loop until out of data
-				if self.chunked:
-					assert self.data.read(2) == '\r\n', 'file not cached: chunked data error' # check if data follows the protocol
+				if self.encoding == 'chunked':
+					assert self.data.read(2) == '\r\n', 'chunked data error' # check if data follows the protocol
 					chunksize = int(self.data.readline().split(';')[0], 16) # use chunk size from header
 				chunks.append(chunk)
 				chunk = self.data.read(chunksize) # read next chunk
 		finally:
 			self.data.seek(0,2) # move to end of file
 
-		self.prepare_path(self.path) # create directories
-		open(self.path, 'w').writelines(chunks) # write file to cache
+		self.prepare_path(self.counterpart.path) # create directories
+		open(self.counterpart.path, 'w').writelines(chunks) # write file to cache
 
-		self.log.info('cached %s', self.path)
+		self.log.info('cached %s', self.counterpart.path)
 
 		if self.time: # current time from server
 			mtime = calendar.timegm(time.strptime(self.time, self.timefmt))
-			os.utime(self.path, (mtime, mtime)) # synch creation time with server
+			os.utime(self.counterpart.path, (mtime, mtime)) # synch creation time with server
 
 	def prepare_path (self, path):
 
@@ -530,29 +592,33 @@ class HttpServer (Http):
 				self.prepare_path(dir) # recurse
 			os.mkdir(dir) # create missing directory
 
-#  MAIN
-#
-#  The [main] function handles the command line arguments, creates a [Listener] instance to monitor the proxy port and starts the [asyncore.loop].
-#  Handling of the command line is left over to the optparse <http://www.python.org/doc/current/lib/module-optparse.html> module.
-#  For all the possible command line options and their meaning see the readme <..>.
-#  The various settings are stored in the corresponding [Http] constants.
-#  When all options are handled without problems the [asyncore.loop] is started, which runs until it is manually interrupted by the user.
-#
-#  When daemon mode is selected the process is forked and the parent returns.
-#  The child's process id is written to stdout or to the pid file specified on the commandline.
-#  Output is redirected to /dev/null or to a log file, in which case time stamps are added to the messages.
-#  The child's user id can be changed to a specified user, after the log and pid file are opened.
-#  This way these files can still be written to places for which 'user' has no permission but the caller has.
+
 
 def main ():
+	"""\
+The `main` function handles the command line arguments, creates a
+`Listener` instance to monitor the proxy port and starts the
+`asyncore.loop`. Handling of the command line is left over to the
+http://www.python.org/doc/current/lib/module-optparse.html[optparse]
+module. For all the possible command line options and their meaning
+see the link:../[readme]. The various settings are stored in the
+corresponding `Http` constants. When all options are handled without
+problems the `asyncore.loop` is started, which runs until it is
+manually interrupted by the user.
 
+When daemon mode is selected the process is forked and the parent
+returns. The child's process id is written to stdout or to the pid
+file specified on the commandline. Output is redirected to /dev/null
+or to a log file, in which case time stamps are added to the messages.
+The child's user id can be changed to a specified user, after the log
+and pid file are opened. This way these files can still be written to
+places for which 'user' has no permission but the caller has.
+"""
 	parser = optparse.OptionParser()
 	parser.add_option('-p', '--port', type='int', default=8080, help='listen on PORT for incoming connections')
 	parser.add_option('-i', '--ip', action='append', default=['127.0.0.1'], help='allow connections from these IP addresses')
 	parser.add_option('-d', '--dir', type='string', default=os.curdir, help='cache in DIR instead of current directory')
-	parser.add_option('-a', '--alias', metavar='STR', action='append', default=[], help='cache in path:url1:url2:...')
-	parser.add_option('-s', '--static', action='store_true', help='never check for modifications')
-	parser.add_option('-f', '--flat', action='store_true', help='save files in a single directory')
+	parser.add_option('-a', '--alias', metavar='STR', action='append', default=[r'(/|^)[.] -> @'])
 	parser.add_option('-e', '--external', metavar='EX', help='forward requests to external proxy server')
 	parser.add_option('-q', '--quiet', action='count', default=0, help='decrease verbosity')
 	daemon = optparse.OptionGroup(parser, 'Daemon Options')
@@ -575,14 +641,19 @@ def main ():
 		parser.error('invalid ip address format %r' % options.ip)
 
 	for alias in options.alias:
-		aliases = alias.split(':') # parse colon-separated alias list
-		dir = aliases.pop(0)
-		for alias in aliases:
-			Http.alias[alias] = dir # build alias dictionary
-	if options.static:
-		Http.static = True
-	if options.flat:
-		Http.flat = True
+		if ' -> ' in alias:
+			pattern, replacement = alias.split(' -> ', 1)
+			static = False
+		elif ' => ' in alias:
+			pattern, replacement = alias.split(' => ', 1)
+			static = True
+		else:
+			parser.error('alias should have format "pattern -> replacement" or "pattern => replacement"')
+		try:
+			Http.alias.append((re.compile(pattern), replacement, static))
+		except:
+			parser.error('invalid regular expression %r' % pattern)
+
 	if options.external:
 		try:
 			addr = options.external
@@ -658,6 +729,9 @@ def main ():
 	except:
 		logging.exception('caught an exception, terminated') # log the exception
 
+
+
 if __name__ == '__main__':
 
 	main()
+

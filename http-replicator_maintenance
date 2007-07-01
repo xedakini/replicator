@@ -1,23 +1,29 @@
 #! /usr/bin/python
-#
-#  The replicator <../http-replicator> proxy server is especially useful for maintaining a debian <http://www.debian.org> package cache.
-#  Such caches tend to grow huge if nothing ever gets thrown away.
-#  This script is meant to be run as a (weekly?) cron task to delete the packages that are unlikely to be needed anymore.
-#  A list of deleted packages is mailed by cron to the system administrator.
-#  If the script is run by hand this list goes to the stdout.
-#  In that case the user should be the super user or the script will be in 'dummy mode' where nothing gets deleted.
-
+"""\
+The link:../http-replicator/[replicator] proxy server is especially
+useful for maintaining a http://www.debian.org[debian] package cache.
+Such caches tend to grow huge if nothing ever gets thrown away. This
+script is meant to be run as a (weekly?) cron task to delete the
+packages that are unlikely to be needed anymore. A list of deleted
+packages is mailed by cron to the system administrator. If the script
+is run by hand this list goes to the stdout. In that case the user
+should be the super user or the script will be in 'dummy mode' where
+nothing gets deleted.
+"""
 import os, optparse
 
-#  MAIN
-#
-#  Function [os.walk] is used to search the replicator cache for debian packages.
-#  For each directory a dictionary [debs] is created which contains the present debian packages and their versions.
-#  If a package's version list contains more than [KEEP] elements the command [dpkg --compare-versions] is used to find the oldest packages to remove.
-#  The variable [deleted] keeps track of all deleted kilobytes to summarize the newly reclaimed free space.
+
 
 def main ():
-
+	"""\
+Function `os.walk` is used to search the replicator cache for debian
+packages. For each directory a dictionary `debs` is created which
+contains the present debian packages and their versions. If a
+package's version list contains more than `KEEP` elements the command
+`dpkg --compare-versions` is used to find the oldest packages to
+remove. The variable `deleted` keeps track of all deleted kilobytes to
+summarize the newly reclaimed free space.
+"""
 	parser = optparse.OptionParser()
 	parser.add_option('-d', '--dir', type='string', default=os.path.curdir, help='cache in DIR instead of current directory')
 	parser.add_option('-k', '--keep', type='int', default=0, help='number of packages to KEEP')
@@ -52,6 +58,9 @@ def main ():
 	print
 	print '%6i kB deleted' % deleted
 
+
+
 if __name__ == '__main__':
 
 	main()
+

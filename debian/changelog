@@ -1,3 +1,16 @@
+http-replicator (3.1) unstable; urgency=low
+
+  * *Currently in development*
+  * Introduced new advanced alias option
+  * Removed superceded static option
+  * Removed superceded flat option
+  * Files with unknown name are by default no longer cached (as index.html)
+  * Now all known ip address are tried before failing
+  * Supported ipv6 hosts
+  * Supported ipv6 clients
+
+ -- Gertjan van Zwieten <gertjanvanzwieten@fastmail.fm>  Mon, 02 May 2005 13:17:00 +0100
+
 http-replicator (3.0) unstable; urgency=low
 
   * New feature: cache brower on proxy address
@@ -26,7 +39,7 @@ http-replicator (2.1) unstable; urgency=low
 http-replicator (2.0) unstable; urgency=low
 
   * Added support for HTTP/1.1
-  * Replicator is now suitable for maintaining a gentoo <http://www.gentoo.org> package cache
+  * Replicator is now suitable for maintaining a http://www.gentoo.org[gentoo] package cache
   * Fixed problem with absolute urls
   * Added posting support
   * Added support for servers that use LF in header instead of CRLF
@@ -35,7 +48,7 @@ http-replicator (2.0) unstable; urgency=low
   * Improved traceback message for unhandled exceptions
   * Fixed problem with incomplete files after a server crash
   * Fixed problems with select
-  * Fixed size calculation in cron <../maintenance> script
+  * Fixed size calculation in link:../cron/[cron] script
 
  -- Gertjan van Zwieten <gertjanvanzwieten@fastmail.fm>  Sat,  1 May 2004 19:11:43 +0100
 
