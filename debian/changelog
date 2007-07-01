@@ -1,3 +1,15 @@
+http-replicator (2.1) unstable; urgency=low
+
+  * Integrated daemon code in http-replicator
+  * Changed init.d and cron script to bash
+  * Moved settings from configuration file to /etc/default/http-replicator
+  * Introduced optparse module for command line parsing
+  * Introduced logging module for output
+  * Added support for an external proxy server
+  * Added support for an external proxy requiring authentication
+
+ -- Gertjan van Zwieten <gertjanvanzwieten@fastmail.fm>  Sat, 15 Aug 2004 19:11:43 +0100
+
 http-replicator (2.0) unstable; urgency=low
 
   * Added support for HTTP/1.1
@@ -10,12 +22,12 @@ http-replicator (2.0) unstable; urgency=low
   * Improved traceback message for unhandled exceptions
   * Fixed problem with incomplete files after a server crash
   * Fixed problems with select
-  * Fixed size calculation in cron <cron.html> script
+  * Fixed size calculation in cron <../maintenance> script
 
- -- Gertjan <python250k@fastmail.fm>  Sat,  1 May 2004 19:11:43 +0100
+ -- Gertjan van Zwieten <gertjanvanzwieten@fastmail.fm>  Sat,  1 May 2004 19:11:43 +0100
 
 http-replicator (1.0) unstable; urgency=low
 
   * Initial Release.
 
- -- Gertjan <python250k@fastmail.fm>  Fri,  6 Feb 2004 16:04:37 +0100
+ -- Gertjan van Zwieten <gertjanvanzwieten@fastmail.fm>  Fri,  6 Feb 2004 16:04:37 +0100

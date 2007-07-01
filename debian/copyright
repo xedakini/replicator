@@ -1,10 +1,10 @@
-This is http-replicator, written and maintained by Gertjan <python250k@fastmail.fm>
+This is http-replicator, written and maintained by Gertjan van Zwieten <gertjanvanzwieten@fastmail.fm>
 on Fri,  6 Feb 2004 16:04:37 +0100.
 
 The original source can always be found at:
 	ftp://ftp.debian.org/dists/unstable/main/source/
 
-Copyright (C) 2003  Gertjan
+Copyright (C) 2003  Gertjan van Zwieten
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by

@@ -1,16 +1,16 @@
 Source: http-replicator
 Section: web
 Priority: optional
-Maintainer: Gertjan <python250k.fastmail.fm>
+Maintainer: Gertjan van Zwieten <gertjanvanzwieten@fastmail.fm>
 Build-Depends: debhelper (>= 4.0.0)
 Standards-Version: 3.6.0
 
 Package: http-replicator
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Replicating HTTP proxy server
- Replicator is a replicating HTTP proxy server. Files that are downloaded
- through the proxy are transparently stored in a private cache, so an exact
- copy of accessed remote files is created on the local machine. It is in
- essence a general purpose proxy server, but very well suited for maintaining
- a cache of debian or gentoo packages.
+ Replicator is a replicating HTTP proxy server. Files that are downloaded 
+ through the proxy are transparently stored in a private cache, so an exact copy
+ of accessed remote files is created on the local machine. It is in essence a
+ general purpose proxy server, but very well suited for maintaining a cache of
+ debian or gentoo packages. 

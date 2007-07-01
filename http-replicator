@@ -1,37 +1,16 @@
 #! /usr/bin/python
 #
 #  This module contains the main code for the replicator proxy server.
-#  The server can be run either manually or as a daemon started by this <init.html> init script.
-#  In the manual case the program does not use a configuration file but can be controlled entirely from the command line.
-#  User feedback is sent to stdout and files are cached in the current directory.
-#  In the daemon case the settings are read from the configuration_file <http-replicator.conf.html> and feedback is written to a log.
-#  This feedback can still be monitored in real time via a telnet connection.
-#
 #  The server uses the medusa <http://www.nightmare.com/medusa> framework, which (as of version 1.5.2) is part of python as module asyncore <http://www.python.org/doc/current/lib/module-asyncore.html>.
 #  Because of this the server runs as a single process, multiplexing I/O with its various client and server connections within a single process/thread.
 #  According to the readme <http://www.nightmare.com/medusa/README.html> this means it is capable of smoother and higher performance than most other servers, while placing a dramatically reduced load on the server machine.
 
-import asyncore, socket, os, time, calendar, sys, re, optparse
+import asyncore, socket, os, time, calendar, sys, re, optparse, pwd, logging, base64
 
-#  constants
-#
-#  Only three constants can't be changed from the command line.
-#  The [CHUNK] constant sets the maximum amount of bytes that are sent or received in a single chunk.
-#  The default 64k value will probably never be met during real downloads; its main purpose is to define the chunk size for files that are read from cache.
-#  For that situation the default seems optimal.
-#  The [TIMEFMT] constant is the format in which http servers send the time (and in which they expect it back).
-#  It is meant for use with the [strptime] and [strftime] functions from the time <http://www.python.org/doc/current/lib/module-time.html> module.
-#  The [INDENT] constant defines the indentation of http header and traceback blocks in user feedback.
-
-CHUNK = 65536 # maximum number of bytes to read and write in one chunk
-TIMEFMT = '%a, %d %b %Y %H:%M:%S GMT' # http time format
-INDENT = ' ' # header and traceback indentation
-
-#  class Listener
+#  LISTENER
 #
 #  Class [Listener] is a subclass of [asyncore.dispatcher].
-#  Its purpose is to monitor incoming requests at the specified [port] and create an instance of [object] for each one.
-#  Class [object] should be a subclass of [asyncore.dispatcher] and should only take a socket parameter, just like the original [asyncore.dispatcher] class.
+#  Its purpose is to monitor incoming requests at the specified [port] and create an instance of [HttpClient] for each one.
 #  It suffices to create the instance: being a subclass of [asyncore.dispatcher] it will add itself to the [asyncore.socket_map] so it won't get garbage-collected.
 #  The main [asyncore.loop] takes care of the rest.
 #
@@ -39,11 +18,11 @@ INDENT = ' ' # header and traceback indentation
 #  The addresses may contain the ? and * wildcards for single and multiple digits.
 #  They are transformed into a single regular expression to create the [ipcheck] function.
 #  Whenever the [asyncore.loop] notices an incoming request the [handle_accept] member function is called.
-#  Here the caller address is checked against [ipcheck] and an instance of [object] is created if permission is granted.
+#  Here the caller address is checked against [ipcheck] and an instance of [HttpClient] is created if permission is granted.
 
 class Listener (asyncore.dispatcher):
 
-	def __init__ (self, object, port, iplist):
+	def __init__ (self, port, iplist):
 
 		asyncore.dispatcher.__init__(self) # original constructor
 
@@ -54,61 +33,22 @@ class Listener (asyncore.dispatcher):
 
 		ipstring = '^'+'|'.join([ip.replace('?','\d').replace('*','\d+').replace('.','[.]') for ip in iplist])+'$'
 		self.ipcheck = re.compile(ipstring).match # compile regular expression
-		self.object = object # save object class
 
 	def handle_accept (self):
 
 		sock, address = self.accept() # get information about the caller
 		if self.ipcheck(address[0]): # check caller's permission
-			self.object(sock) # create object instance
+			HttpClient(sock) # create HttpClient instance
 		else: # no permission for caller
-			print 'Listener', 'Blocked request from %s:%i' % address
+			logging.warning('blocked incoming request from %s:%i', *address) # log a warning
 
-#  class Telnet
+#  HTTP
 #
-#  Class [Telnet] is a subclass of [asyncore.dispatcher], just as [Listener].
-#  This class does not handle incoming requests itself but gets created by a [Listener] instance whenever a request is made at its port.
-#  The constructor is not modified so the socket parameter is handled automatically.
-#  This class is not used when the replicator is run manually.
-#  It is here for when replicator is run as a daemon and [sys.stdout] is redirected to a file object or similar.
-#  Note: this is mandatory as [sys.stdout] must seekable.
-#  When a [Listener] instance for this class is created, it is possible to view replicator's output through a telnet connection.
-#
-#  Operation is as follows.
-#  When the [asyncore.loop] signals incoming data (someone's typing in the telnet session), [handle_read] reads and looses it.
-#  In the other direction [writable] compares the pointer position of [sys.stdout] with its own [pointer].
-#  In case of a non match, asyncore calls [handle_write] to send the unsent in chunks of size [CHUNK] and update the [pointer].
-#  After each call the [sys.stdout] file pointer is moved to the end of the file to make sure that future print calls are appended.
-
-class Telnet (asyncore.dispatcher):
-
-	pointer = 0 # number of written bytes
-
-	def writable (self):
-
-		return sys.stdout.tell() > self.pointer # compare pointers
-
-	def handle_write (self):
-
-		sys.stdout.seek(self.pointer) # sys.stdout must be seekable!
-		self.pointer += self.send(sys.stdout.read(CHUNK)) # self.send returns number of sent bytes
-		sys.stdout.seek(0,2) # move to end of file
-
-	def handle_read (self):
-
-		self.recv(CHUNK) # read max CHUNK bytes at a time
-
-	def handle_close (self):
-
-		self.close() # close socket and remove from asyncore map
-
-#  class Http
-#
-#  Class [Http] is yet another subclass of [asyncore.dispatcher].
+#  Class [Http] is a subclass of [asyncore.dispatcher] as well.
 #  It is not meant for standalone use but should be subclassed to provide two additional handling functions: [handle_header] and [handle_data], which are respectivily called after the http [header] and [data] are received.
 #  The [HttpClient] and [HttpServer] classes do this, and together handle communication between the calling http client and the called http server.
 #  Each instance refers to its counterpart via the [other] variable.
-#  The three constants [static], [flat] and [debug] can be set from the command line to change the server's operating mode.
+#  The constants [static], [flat], [intolerant], [external] and [external_auth] can be set from the command line to change the server's operating mode.
 #
 #  This class handles everything that the http request from the client and the response from the server have in common:
 #  * The first line consists of three fields.
@@ -121,16 +61,17 @@ class Telnet (asyncore.dispatcher):
 #  This function prepares the second part of the transmission and the main (only) purpose of this proxy: caching.
 #  When the connection is closed [handle_data] is called to finish this task.
 #
-#  Procedure is quite different from that of the [Telnet] class.
-#  Function [writable] does not only return true when there is unwritten data but also when the connection can be closed.
+#  Operation is as follows.
+#  Function [writable] is called by [asyncore] to check is the [Http] instance has data to write.
+#  It does not only return true when there is unwritten data but also when the connection can be closed.
 #  This is the case when counterpart [other] is closed and all its data has been sent.
-#  The connection is closed next time [handle_write] is called in response to this positive return value.
+#  The connection is closed next time that [handle_write] is called by [asyncore] in response to this positive return value.
 #  The counterpart is considered closed when its backreference [other] is deleted.
 #  This reference is explicitly deleted on the [HttpServer] side because cyclic references make the garbage collector fail, which means the instance would never be deleted.
 #  What exactly happens in that case is shown here <http://www.nightmare.com/medusa/memory-leaks.html>.
 #
 #  Incoming and outgoing data is divided in a [header] and [data], which reflects the structure of an http transmission.
-#  This division is made in [handle_read].
+#  This division is made in [handle_read], which is called by [asyncore] when there is unread data waiting on the socket.
 #  The data is read in blocks of [CHUNK] bytes max and stored in the [header] string as long as the http header is not completed.
 #  Once the complete header is received it is parsed in a list [head] and dictionary [body] and [handle_header] is called.
 #  Here [body] and [head] (mutable) can be altered.
@@ -144,7 +85,7 @@ class Telnet (asyncore.dispatcher):
 #  This is because asyncore has its own mechanism for catching errors.
 #  Of course, when all clients and servers work by the book these errors don't occur.
 #  If one doesn't then asyncore catches the exception and calls the [handle_error] member function, which then closes the socket.
-#  The function is rewritten to crash in [debug] mode or otherwise print a traceback message that is a bit clearer than the default.
+#  The function is rewritten to crash in [intolerant] mode or otherwise log a traceback message.
 
 class Http (asyncore.dispatcher):
 
@@ -156,11 +97,27 @@ class Http (asyncore.dispatcher):
 
 	static = False # static mode: never check for modifications
 	flat = False # flat mode: save files in a single directory
-	debug = False # debug mode: crash on exceptions
+	intolerant = False # intolerant mode: crash on exceptions
+	external = None # external proxy address
+	external_auth = None # external proxy authorization
 
-	def __str__ (self):
+	chunk = 65536 # maximum number of bytes to read and write in one chunk
+	timefmt = '%a, %d %b %Y %H:%M:%S GMT' # http time format
 
-		return '%s %i' % (self.__class__.__name__, self.id) # string representation for stdout feedback
+	def __init__ (self, sock, other=None):
+
+		asyncore.dispatcher.__init__(self, sock) # original constructor
+
+		if other: # counterpart present
+			self.other = other # set up reference ...
+			other.other = self # ... and back reference
+			self.id = other.id # user same id
+		else: # counterpart not present
+			self.id = Http.id = Http.id + 1 # take next available id
+
+		self.log = logging.getLogger('%s %i' % (self.__class__.__name__, self.id)) # create a logger for this instance
+		self.ip, port = sock.getpeername() # save ip address
+		self.log.debug('connected to %s:%i', self.ip, port)
 
 	def writable (self):
 
@@ -168,13 +125,16 @@ class Http (asyncore.dispatcher):
 
 	def handle_write (self):
 
-		offset = self.pointer - len(self.other.header) # sent bytes counting from data
+		if self.other:
+			offset = self.pointer - len(self.other.header) # sent bytes counting from data
+		else:
+			return
 
 		if offset < 0: # header not completely sent
 			self.pointer += self.send(self.other.header[self.pointer:]) # send header
 		elif offset < self.other.data.tell(): # data not completely sent
 			self.other.data.seek(offset) # move to pointer position
-			self.pointer += self.send(self.other.data.read(CHUNK)) # send data
+			self.pointer += self.send(self.other.data.read(self.chunk)) # send data
 			self.other.data.seek(0,2) # move back to end of file
 		else: # nothing to write
 			self.handle_close() # close instance
@@ -182,10 +142,10 @@ class Http (asyncore.dispatcher):
 	def handle_read (self):
 
 		if self.data: # header is complete
-			self.data.write(self.recv(CHUNK)) # read directly into data file
+			self.data.write(self.recv(self.chunk)) # read directly into data file
 			return
 
-		self.header += self.recv(CHUNK) # append data to header string
+		self.header += self.recv(self.chunk) # append data to header string
 		crlf = self.header.find('\r\n\r\n') # first occurence of a double CRLF
 		lf = self.header.find('\n\n') # first occurence of a double LF
 		if crlf > -1 and not -1 < lf < crlf: # this is the official format
@@ -197,61 +157,43 @@ class Http (asyncore.dispatcher):
 		else: # header is not yet complete
 			return
 
-		if self.other: # counterpart is present
-			self.id = self.other.id # use same id
-		else:
-			self.id = Http.id = Http.id + 1 # use next available id
-
-		print self, 'Received header from %s:%i' % self.addr
-		print
-		headstr = lines.pop(0) # pop top header line from list
-		print INDENT, headstr
-		head = headstr.split(' ', 2) # split in a three element list
+		self.log.debug('received header:\n\n  '+'\n  '.join(lines)+'\n')
+		head = lines.pop(0).split(' ', 2) # split top header line in a three element list
 		body = {} # start a new dictionary
 		for line in lines: # iterate over the other header lines
-			print INDENT, line
 			key, value = line.split(':', 1) # split line at the colon
 			body[key.lower()] = value.strip() # build dictionary with lowercase keys
-		print
 		self.handle_header(head, body, data) # call subclass function: handle_header
 		self.header = '\r\n'.join([' '.join(head)]+map(': '.join, body.items())+['','']) # rebuild header
 
 	def handle_error (self):
 
-		type, value, traceback = sys.exc_info() # get exception info
-		if self.debug or type is KeyboardInterrupt: # server is in debug mode or manually killed
+		if self.intolerant or sys.exc_info()[0] is KeyboardInterrupt: # server is in intolerant mode or manually killed
 			raise # crash!
 
-		print self, 'Error:', value
-		print
-		print INDENT, 'TRACEBACK'
-		while traceback: # iterate over traceback objects
-			code = traceback.tb_frame.f_code
-			print INDENT, '%s (file %s, line %i)' % (code.co_name, code.co_filename, traceback.tb_lineno)
-			traceback = traceback.tb_next
-		print
+		self.log.exception('caught an exception, closing socket') # log the exception
 		self.close() # close socket and remove from asyncore map
 
 	def handle_close (self):
 
 		self.handle_data() # call subclass function: handle_data
 		self.close() # close socket and remove from asyncore map
-		print self, 'Closed'
+		self.log.debug('closed')
 
-#  class HttpClient
+#  HTTPCLIENT
 #
 #  Class [HttpClient] is one of the two subclasses of [Http].
 #  Instances are created by a [Listener] instance for each http request that is made through the proxy server.
 #  Once the http header is received [handle_header] is called.
 #  Here the header is altered and the connection to the requested http server is made.
-#  In most cases no data follows and even if it does (post request) it is not used so [handle_data] is empty.
+#  In most cases no data follows and even if it does (post request) it is not further used so [handle_data] is empty.
 #
 #  An http client sends a different header to a proxy server than it does to a normal http server.
 #  The most important difference is that to a proxy the full url is sent, including http://host.
 #  Many servers require a relative path, so it is up to the proxy to make this right.
-#  It was a lack of this that made the previous version of replicator fail on a large number of websites.
+#  Unless of course the request is forwarded to another proxy, in which case the url is not modified.
 #  Another important change is to force a connection close after each single transfer.
-#  HTTP/1.1 supports leaving the connection open for following requests but this is not supported by replicator.
+#  HTTP/1.1 supports persistent connections, meaning the connection is left open for following requests but this is not supported by replicator.
 #  Content encodings and range requests are also not supported.
 #
 #  The majority of the code involves replicator's main purpose: caching.
@@ -275,14 +217,23 @@ class HttpClient (Http):
 
 	def handle_header (self, head, body, data):
 
-		host, port, dirs, file = self.spliturl(head[1]).groups() # parse url
-		port = port and int(port) or 80 # use port 80 if it is not specified
-		head[1] = '/'+dirs+file # transform absolute url to a relative one
+		self.log.info('received request for %s', head[1])
+
+		match = self.spliturl(head[1]) # parse url
+		assert match, 'invalid url %r' % head[1] # check if a match is found
+		host, port, dirs, file = match.groups()
+		port = port and int(port) or 80 # use port 80 if not specified
+		if not self.external: # direct connection to remote host
+			head[1] = '/'+dirs+file # transform absolute url to a relative one
 		if not self.flat: # not in flat mode
 			file = os.path.join(host, dirs, file or 'index.html') # use full path
 
 		body['connection'] = 'close' # close connection after transfer
 		body['host'] = host # make sure the host is sent
+		if self.external_auth: # proxy requires authorization
+			body['proxy-authorization'] = self.external_auth # send authorization info
+		else:
+			body.pop('proxy-authorization', None)
 		body.pop('keep-alive', None)
 		body.pop('proxy-connection', None)
 		body.pop('range', None) # always fetch entire file
@@ -294,45 +245,42 @@ class HttpClient (Http):
 
 			for object in asyncore.socket_map.values(): # search for identical transfers
 				if object.__class__ is HttpServer and object.file == file:
-					print self, 'Joined', object
+					self.log.info('joined running download %i', object.id)
 					self.other = object # make this the counterpart
 					return
 
 			in_cache = os.path.isfile(file) # check if file exists
 
 			if self.static and (in_cache or 'if-modified-since' in body): # static mode and file is in some cache
-				other = HttpServer(LocalResponse(304)) # fake 'not modified' response
+				HttpServer(LocalResponse(304), self) # fake 'not modified' response
 			elif in_cache: # dynamic mode and file is in replicator cache
-				other = HttpServer(self.getsocket(host, port)) # connect to server
+				HttpServer(self.getsocket(host, port), self) # connect to server
 				mtime = os.path.getmtime(file) # get cache date
 				value = body.get('if-modified-since') # get optional private cache date
-				if not value or mtime > calendar.timegm(time.strptime(value, TIMEFMT)): # check the most recent
-					print self, 'Checking for modification since', time.ctime(mtime)
-					body['if-modified-since'] = time.strftime(TIMEFMT, time.gmtime(mtime))
+				if not value or mtime > calendar.timegm(time.strptime(value, self.timefmt)): # check the most recent
+					self.log.debug('checking modification since %s', time.ctime(mtime))
+					body['if-modified-since'] = time.strftime(self.timefmt, time.gmtime(mtime))
 			else: # file is new
-				other = HttpServer(self.getsocket(host, port)) # connect to server
+				HttpServer(self.getsocket(host, port), self) # connect to server
 
-			other.file = file
-			other.in_cache = in_cache
+			self.other.file = file
+			self.other.in_cache = in_cache
 
 		elif head[0] == 'POST': # an upload request
 
 			if 'content-length' in body:
 				self.data = os.tmpfile() # this is the only case where data should follow
 				self.data.write(data) # write already received data
-				other = HttpServer(self.getsocket(host, port)) # connect to server
+				HttpServer(self.getsocket(host, port), self) # connect to server
 			else:
-				print self, 'Error: unspecified content length in post request'
+				self.log.error('unspecified content length in post request')
 				self.data = self.null
-				other = HttpServer(LocalResponse(503))
+				HttpServer(LocalResponse(503), self)
 
 		else: # any other request
 
 			self.data = self.null # no data should follow
-			other = HttpServer(self.getsocket(host, port)) # connect to server
-
-		self.other = other # HttpClient references HttpServer..
-		other.other = self # ..and vice versa
+			HttpServer(self.getsocket(host, port), self) # connect to server
 
 	def handle_data (self):
 
@@ -340,25 +288,28 @@ class HttpClient (Http):
 
 	def getsocket (self, host, port):
 
-		print self, 'Connecting to', host
+		self.log.debug('connecting to %s', host)
 		try:
-			assert port == 80 or port > 1024, 'illegal attempt to connect to port %i' % port # security
 			sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # create socket
 			sock.settimeout(30.) # give up after 30 seconds; only affects connect
-			sock.connect((host, port)) # connect to server
+			if self.external:
+				sock.connect(self.external)
+			else:
+				assert port == 80 or port > 1024, 'illegal attempt to connect to port %i' % port # security
+				sock.connect((host, port)) # connect to server
 		except: # connection failed
-			print self, 'Failed:', sys.exc_info()[1]
+			self.log.error(sys.exc_info()[1])
 			return LocalResponse(503) # fake 'service unavailable' response
 		else: # connection succeeded
 			return sock
 
-#  class HttpServer
+#  HTTPSERVER
 #
 #  Class [HttpServer] is the other subclass of [Http], the counterpart of [HttpClient].
 #  Instances of [HttpServer] are created by the [HttpClient.handle_header] function.
 #  The purpose of this class is to interpret the http server's response to the client's request and act accordingly, caching everything that can possibly be cached.
 #
-#  The top line of an http response header is different from a http request but still consists of three fields; the middle one is a status integer.
+#  The top line of an http response header is different from an http request but still consists of three fields; the middle one is a status integer.
 #  A value of 200 denotes a successful download.
 #  If [file] is set then this is the response to a GET request.
 #  In that case [to_cache] is set and relevant items from the body dictionary like file size and transfer encoding are saved for later use.
@@ -385,14 +336,17 @@ class HttpServer (Http):
 	size = None # filesize
 	chunked = False # transfer encoding
 
-	in_cache = None # file is in cache
-	to_cache = None # file goes to cache
+	in_cache = False # file is in cache
+	to_cache = False # file goes to cache
 
 	def handle_header (self, head, body, data):
 
 		if head[1] == '200' and self.file: # 200 OK: file is being sent
 
-			print self, self.in_cache and 'Too old:' or 'Not in cache:', self.file
+			if self.in_cache:
+				self.log.info('file in cache too old, downloading new')
+			else:
+				self.log.info('file not in cache, starting download')
 
 			self.data = os.tmpfile() # open temporary file
 			self.data.write(data) # write already received data
@@ -400,7 +354,7 @@ class HttpServer (Http):
 
 			value = body.get('date') # current time
 			if value:
-				self.time = calendar.timegm(time.strptime(value, TIMEFMT))
+				self.time = calendar.timegm(time.strptime(value, self.timefmt))
 			value = body.get('content-length') # file size
 			if value:
 				self.size = int(value)
@@ -409,15 +363,15 @@ class HttpServer (Http):
 				if value.lower() == 'chunked': # chunked transfer encoding
 					self.chunked = True
 				else: # unknown encoding
-					print self, 'Unsupported transfer encoding:', value
+					self.log.warning('unsupported transfer encoding %r, not cached', value)
 					self.to_cache = False # don't cache
 
 		elif head[1] == '304' and self.in_cache: # 304 Not modified: file in cache is up to date
 
-			print self, 'In cache:', self.file
-
 			self.data = open(self.file, 'r') # data is read from cache
 			self.data.seek(0,2) # move to end of file
+
+			self.log.stat('serving %i bytes from cache to %s', self.data.tell(), self.other.ip)
 
 			head[1] = '200' # transform into a 200 OK response
 			head[2] = 'OK'
@@ -430,58 +384,62 @@ class HttpServer (Http):
 
 	def handle_data (self):
 
+		if self.to_cache:
+
+			self.log.info('download complete, storing %s', self.file)
+			try: # fail-safe approach
+				file = None # file is not yet created
+				if self.size: # filesize is known
+					assert self.size == self.data.tell(), 'size mismatch' # check size
+				else:
+					self.log.warning('unable to verify file size')
+
+				self.prepare(self.file) # create directories
+				file = open(self.file, 'w') # open file for writing
+
+				self.data.seek(0) # move to beginning of file
+				if self.chunked: # chunked transfer
+					self.log.debug('post processing chunked data')
+					self.chunk = int(self.data.readline().split(';')[0], 16) # in case of chunked transfer use chunk size from header
+				data = self.data.read(self.chunk) # read first chunk
+				while data: # loop until out of data
+					if self.chunked:
+						assert self.data.read(2) == '\r\n', 'chunked data error' # check if data follows the protocol
+						self.chunk = int(self.data.readline().split(';')[0], 16)
+					file.write(data) # write data chunk
+					data = self.data.read(self.chunk) # read next chunk
+
+				if self.time: # current time from server is known
+					os.utime(self.file, (self.time, self.time)) # synch creation time with server
+
+				self.log.stat('successfully downloaded %i bytes to %s', file.tell(), self.other.ip)
+			except: # something went wrong
+				self.log.error(sys.exc_info()[1])
+
+				if file: # error occured after file was created
+					file.close()
+					os.remove(self.file)
+
+			self.data.seek(0,2) # always leave file pointer at end of file
+
 		del self.other # remove cross reference
-		if not self.to_cache:
-			return # nothing else to do
-
-		print self, 'Storing', self.file
-		try: # fail-safe approach
-			file = None # file is not yet created
-			if self.size: # filesize is known
-				assert self.size == self.data.tell(), 'size mismatch' # check size
-
-			self.prepare(self.file) # create directories
-			file = open(self.file, 'w') # open file for writing
-
-			self.data.seek(0) # move to beginning of file
-			chunk = CHUNK # write chunks of CHUNK bytes or..
-			if self.chunked: # ..in case of chunked transfer..
-				print self, 'Post processing chunked data'
-				chunk = int(self.data.readline().split(';')[0], 16) # ..use chunk size from header
-			data = self.data.read(chunk) # read first chunk
-			while data: # loop until out of data
-				if self.chunked:
-					assert self.data.read(2) == '\r\n', 'chunked data error' # check if data follows the protocol
-					chunk = int(self.data.readline().split(';')[0], 16)
-				file.write(data) # write data chunk
-				data = self.data.read(chunk) # read next chunk
-
-			if self.time: # current time from server is known
-				os.utime(self.file, (self.time, self.time)) # synch creation time with server
-		except: # something went wrong
-			print self, 'Failed:', sys.exc_info()[1]
-			if file: # error occured after file was created
-				file.close()
-				os.remove(self.file)
-
-		self.data.seek(0,2) # always leave file pointer at end of file
 
 	def prepare (self, name):
 
 		dir = os.path.dirname(name)
 		if dir and not os.path.isdir(dir): # directory does not yet exist
 			if os.path.isfile(dir): # a directory not ending with a slash may have been cached as a file
-				print self, 'Warning: directory %s mistaken for a file' % dir
+				self.log.warning('directory %s mistaken for a file', dir)
 				os.remove(dir) # delete; it should not have been cached in the first place
 			else: # neither a file nor a directory
 				self.prepare(dir) # recurse
 			os.mkdir(dir) # create missing directory
 
-#  class LocalResponse
+#  LOCALRESPONSE
 #
 #  Class [LocalResponse] emulates a socket, enabeling replicator to respond to a client without actually connecting to a server.
-#  It expects only one parameter: the desired http [reponse] code.
-#  The header is written to a temporary file, making use of the fact the poll and select don't solely work with sockets but with general file descriptors.
+#  It expects only one parameter: the required http [reponse] code.
+#  The header is written to a temporary file, making use of the fact that poll and select don't solely work with sockets but with general file descriptors.
 #  Everything that is written to the socket is lost.
 #  Not all functions that are normally found on a socket are implemented, only those that are used by asyncore.
 #  The socket identifies itself through [getpeername] as 'LocalResponse' and the served response code.
@@ -496,7 +454,7 @@ class LocalResponse:
 
 		self.file = os.tmpfile() # needed for the file descriptor
 		self.write('HTTP/1.1 %i %s\r\n' % (response, self.reason[response]))
-		self.write('date: %s\r\n' % time.strftime(TIMEFMT, time.gmtime()))
+		self.write('date: %s\r\n' % time.strftime(Http.timefmt, time.gmtime()))
 		self.write('\r\n')
 		self.seek(0) # move to beginning of file
 		self.response = response # save response code for getpeername
@@ -521,36 +479,121 @@ class LocalResponse:
 
 		return len(str) # pretend everyting is sent
 
-#  function main
+#  MAIN
 #
 #  The [main] function handles the command line arguments, creates a [Listener] instance to monitor the proxy port and starts the [asyncore.loop].
-#  The command line handling is left over to the optparse <http://www.python.org/doc/current/lib/module-optparse.html> module.
-#  For the possible command line options see the description <index.html> page.
+#  Handling of the command line is left over to the optparse <http://www.python.org/doc/current/lib/module-optparse.html> module.
+#  For all the possible command line options and their meaning see the description <..> page or the readme.
 #  If all goes well the [asyncore.loop] runs until it is manually interrupted by the user.
+#
+#  When daemon mode is selected the process is forked and the parent returns.
+#  The child's process id is written to stdout or to the pid file specified on the commandline.
+#  Output is redirected to /dev/null or to a log file, in which case time stamps are added to the messages.
+#  The child's user id can be changed to a specified user, after the log and pid file are opened.
+#  This way these files can still be written to places for which 'user' has no permission but the caller has.
 
 def main ():
 
 	parser = optparse.OptionParser()
 	parser.add_option('-p', '--port', type='int', default=8080, help='listen on PORT for incoming connections')
-	parser.add_option('-i', '--ip', action='append', default=['127.0.0.1'], help='allow connections from certain IP addresses')
+	parser.add_option('-i', '--ip', action='append', default=['127.0.0.1'], help='allow connections from these IP addresses')
+	parser.add_option('-d', '--dir', type='string', default=os.path.curdir, help='cache in DIR instead of current directory')
 	parser.add_option('-s', '--static', action='store_true', help='never check for modifications')
 	parser.add_option('-f', '--flat', action='store_true', help='save files in a single directory')
-	parser.add_option('-d', '--debug', action='store_true', help='crash on exceptions')
+	parser.add_option('-e', '--external', metavar='EX', help='forward requests to external proxy server')
+	parser.add_option('-q', '--quiet', action='count', default=0, help='decrease verbosity')
+	daemon = optparse.OptionGroup(parser, 'Daemon Options')
+	daemon.add_option('--daemon', action='store_true', help='enter daemon mode')
+	daemon.add_option('--log', type='string', help='write output to LOG')
+	daemon.add_option('--pid', type='string', help='write process id to PID')
+	daemon.add_option('--user', type='string', help='change uid to USER')
+	parser.add_option_group(daemon)
+	debug = optparse.OptionGroup(parser, 'Debugging Options')
+	debug.add_option('--debug', action='store_true', help='enter debug mode')
+	debug.add_option('--intolerant', action='store_true', help='crash on exceptions')
+	parser.add_option_group(debug)
 	options, args = parser.parse_args() # parse command line
+
 	try:
-		Listener(HttpClient, options.port, options.ip) # setup Listener for specified port
+		Listener(options.port, options.ip) # setup Listener for specified port
 	except socket.error:
 		parser.error('port %i is not available' % options.port)
 	except re.error:
-		parser.error('invalid ip address format')
-	Http.static = options.static
-	Http.flat = options.flat
-	Http.debug = options.debug
+		parser.error('invalid ip address format %r' % options.ip)
+
+	if options.static:
+		Http.static = True
+	if options.flat:
+		Http.flat = True
+	if options.external:
+		try:
+			addr = options.external
+			if '@' in addr: # authorization info specified
+				auth, addr = options.external.split('@')
+				Http.external_auth = 'Basic '+ base64.encodestring(auth)[:-1] # prepare proxy-authorization header
+			host, port = addr.split(':')
+			Http.external = host, int(port)
+		except:
+			parser.error('invalid external address %r' % options.external)
+
+	logging.STAT = logging.INFO + 1 # create STAT logging level between INFO and WARNING
+	logging.addLevelName(logging.STAT, 'STAT')
+	logging.Logger.stat = lambda self, *args: self.log(logging.STAT, *args)
+	if options.debug:
+		logging.root.setLevel(logging.DEBUG)
+		if options.intolerant:
+			Http.intolerant = True
+	else:
+		logging.root.setLevel([logging.INFO, logging.STAT, logging.WARNING, logging.ERROR, logging.CRITICAL][min(4, options.quiet)])
+
+	if options.daemon:
+		if options.log:
+			try:
+				handler = logging.FileHandler(options.log) # log to a file
+				handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(name)s %(message)s', '%d %b %Y %H:%M:%S'))
+				logging.root.addHandler(handler)
+			except IOError:
+				parser.error('invalid log file %r' % options.log)
+		if options.pid:
+			try:
+				pidfile = open(options.pid, 'w') # open for writing
+			except IOError:
+				parser.error('invalid pid file %r' % options.pid)
+		else:
+			pidfile = sys.stdout # write pid to stdout if no pidfile is specified
+		if options.user:
+			try:
+				pwnam = pwd.getpwnam(options.user)
+				os.setgid(pwnam[3]) # change gid
+				os.setuid(pwnam[2]) # change uid
+			except KeyError:
+				parser.error('user %r does not exist' % options.user)
+			except OSError:
+				parser.error('no permission for changing to user %r' % options.user)
+		pid = os.fork() # fork process
+		if pid: # parent process
+			pidfile.write(str(pid)) # store child's pid
+			pidfile.close()
+			return
+	else:
+		handler = logging.StreamHandler(sys.stdout) # log to stdout
+		handler.setFormatter(logging.Formatter('%(levelname)s: %(name)s %(message)s'))
+		logging.root.addHandler(handler)
+
 	try:
-		print 'HttpReplicator', 'Started'
+		os.chdir(options.dir) # change to cache directory
+	except OSError:
+		parser.error('invalid directory %r' % options.dir)
+	if not os.access(os.curdir, os.R_OK | os.W_OK): # check permissions for cache directory
+		parser.error('no read/write permission for directory %r' % options.dir)
+
+	sys.stdout = sys.stderr = open('/dev/null', 'w') # redirect all output to bit bucket
+	logging.root.name = 'HttpReplicator'
+	try:
+		logging.info('started')
 		asyncore.loop() # main asyncore loop
 	except KeyboardInterrupt: # manually interrupted
-		print 'HttpReplicator', 'Terminated'
+		logging.info('terminated')
 
 if __name__ == '__main__':
 

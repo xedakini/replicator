@@ -1,0 +1,6 @@
+/var/log/http-replicator.log {
+	size 10k
+	missingok
+	copytruncate
+	compress
+}

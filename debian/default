@@ -1,0 +1,18 @@
+# Defaults for http-replicator initscript
+# sourced by /etc/init.d/http-replicator and /etc/cron.weekly/http-replicator
+# installed at /etc/default/http-replicator by the maintainer scripts
+
+#
+# This is a POSIX shell fragment
+#
+
+exit 0 # REMOVE THIS LINE TO ACTIVATE THE PROXY SERVER
+
+# Options that apply to all programs
+GENERAL_OPTS="--dir /var/cache/http-replicator"
+
+# Additional options that are passed to the daemon
+DAEMON_OPTS="$GENERAL_OPTS --port 8080 --log /var/log/http-replicator.log --user proxy"
+
+# Additional options that are passed to the maintenance script.
+MAINTENANCE_OPTS="$GENERAL_OPTS --keep 2"
