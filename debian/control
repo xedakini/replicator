@@ -1,0 +1,19 @@
+Source: http-replicator
+Section: web
+Priority: optional
+Maintainer: Gertjan <python250k.fastmail.fm>
+Build-Depends: debhelper (>= 4.0.0)
+Standards-Version: 3.6.0
+
+Package: http-replicator
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Description: Replicating http proxy server
+ Replicator is a replicating http proxy server.
+ Files that are downloaded through the proxy are transparently stored in a private cache.
+ This way an exact copy of accessed remote files is created on the local machine.
+ Due to some minor problems this server is less suitable to replace your browser's private cache.
+ .
+ This is in essence a general purpose proxy server, but especially suited for maintaining a cache of debian packages.
+ It is easily set up by adding an Acquire::http::Proxy "http://(HOST):(PORT)"; line to your apt configuration file.
+ For this specific purpose a cron script is added to do some simple cache cleaning.

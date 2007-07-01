@@ -1,0 +1,66 @@
+#! /bin/sh -e
+
+if [ "$1" = "configure" ]; then
+
+. /usr/share/debconf/confmodule
+
+db_get http-replicator/port
+PORT=$RET
+db_get http-replicator/telnet
+TELNET=$RET
+db_get http-replicator/dir
+DIR=$RET
+db_get http-replicator/keep
+KEEP=$RET
+db_stop
+
+mkdir -p $DIR
+chown proxy:proxy $DIR
+
+cat <<-EOF > /etc/http-replicator.conf
+#  This is the configuration file for the replicator proxy suite.
+#  Settings from this file will apply to the server in daemon mode and also to the debian cache cleaner script, if used.
+#  The proxy server will act on port [PORT] of the localhost.
+#  The default value of 8080 is a common value for a http proxy server.
+#  If you have another http proxy running it is likely that you should should change this port.
+
+PORT = $PORT
+
+#  The proxy server can be monitored via telnet on port [TELNET].
+#  Make sure it is available.
+
+TELNET = $TELNET
+
+#  The process user id is set to [USER].
+#  The daemon must be started as root, as no user can change into another.
+#  Not even [USER] can change into itself!
+
+USER = 'proxy'
+
+#  All cached files ar saved in directory [DIR].
+#  From the url [http://] is stripped, the rest is used as subdirectories and filename.
+#  The [USER] should of course have write permission in this directory.
+
+DIR = '$DIR'
+
+#  The process id of the running process is saved in [PID].
+#  As this is done before changing into [USER], write permission for [USER] for this file is not necessairy.
+
+PID = '/var/run/http-replicator.pid'
+
+#  All messages on stdout and stderr are in daemon mode written to the [LOG].
+#  Just as for [PID], write permission for [LOG] is not necessairy.
+
+LOG = '/var/log/http-replicator'
+
+#  When the proxy server is used to maintain a cache of debian packages a cron script can delete the oldest packages.
+#  The value of [KEEP] sets the maximum number of versions of each package to be kept.
+#  For example a value of one will delete all versions but the most recent.
+#  The script is disabled by setting this value to zero.
+
+KEEP = $KEEP
+EOF
+
+fi
+
+#DEBHELPER#

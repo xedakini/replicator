@@ -1,0 +1,31 @@
+Template: http-replicator/port
+Type: string
+Default: 8080
+Description: Proxy server port:
+ The proxy server will act on this port of the localhost.
+ The default value of 8080 is a common value for a http proxy server.
+ If you have another http proxy running it is likely that you should should change this port.
+
+Template: http-replicator/telnet
+Type: string
+Default: 8081
+Description: Telnet port:
+ The proxy server can be monitored via telnet on this port.
+ Make sure it is available.
+
+Template: http-replicator/dir
+Type: string
+Default: /var/cache/http-replicator
+Description: Cache directory:
+ All cached files are saved in this directory.
+ From the url http:// is stripped, the rest is used as subdirectories and filename.
+ The directory's ownership is set to 'proxy' for the server to have write permission.
+
+Template: http-replicator/keep
+Type: string
+Default: 2
+Description: Debian packages to keep:
+ When the proxy server is used to maintain a cache of debian packages a cron script can delete the oldest packages.
+ This value sets the maximum number of versions of each package to be kept.
+ For example a value of one will delete all versions but the most recent.
+ The script is disabled by entering a value of zero.

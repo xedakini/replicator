@@ -1,0 +1,9 @@
+http-replicator (1.0) unstable; urgency=low
+
+  * Initial Release.
+
+ -- Gertjan <python250k@fastmail.fm>  Fri,  6 Feb 2004 16:04:37 +0100
+
+Local variables:
+mode: debian-changelog
+End:

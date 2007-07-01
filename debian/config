@@ -1,0 +1,9 @@
+#! /bin/sh -e
+
+. /usr/share/debconf/confmodule
+
+db_input medium http-replicator/port || true
+db_input medium http-replicator/telnet || true
+db_input medium http-replicator/dir || true
+db_input medium http-replicator/keep || true
+db_go || true
