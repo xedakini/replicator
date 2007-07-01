@@ -17,7 +17,7 @@ class Head:
     self.__args = firstline.rstrip().split( ' ', 2 )
     self.__kwargs = {}
 
-    assert len( self.__args ) == 3, 'invalid header line'
+    assert len( self.__args ) == 3, 'invalid header line %r' % firstline
 
     for line in lines:
 

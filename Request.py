@@ -1,35 +1,54 @@
 import Util, Params, Protocol, os, time, socket
 
 
-# Request
-#
-# Handles http client request
-#
-# * << - None; receive data from client
-# * getprotocol - Protocol; initial server communication
-# * gethead - Http; client http header
-# * getbody - str; client http body
-# * getpath - str; cache path
-# * getsocket - socket; server
-
-
 class Request:
 
-  def __notimpl( self, descr ):
+  def __nonzero__( self ):
+    '''\
+    True iff a complete request is received. Remaining functions
+    except for recv may be used only when True.'''
 
-    raise AssertionError, '%s not implemented in %s' % ( descr, self.__class__.__name__ )
+    raise 'stopcondition not implemented'
 
-  __nonzero__ = lambda self: self.__notimpl( 'stopcondition' )
-  __rshift__  = lambda self, sock: self.__notimpl( 'sending' )
-  __lshift__  = lambda self, sock: self.__notimpl( 'receiving' )
-  getprotocol = lambda self: self.__notimpl( 'getprotocol' )
-  gethead     = lambda self: self.__notimpl( 'gethead' )
-  getbody     = lambda self: self.__notimpl( 'getbody' )
-  getpath     = lambda self: self.__notimpl( 'getpath' )
-  getsocket   = lambda self: self.__notimpl( 'getsocket' )
+  def recv( self, client ):
+    '''\
+    No return. Receives data from client socket.'''
+
+    raise 'recv not implemented'
+
+  def getprotocol( self ):
+    '''\
+    Returns Protocol object for communication with server. Hands self
+    as argument; most functions will be called by Protocol.'''
+
+    raise 'getprotocol not implemented'
+
+  def gethead( self ):
+    '''\
+    Returns request header as Head object.'''
+
+    raise 'gethead not implemented'
+
+  def getbody( self ):
+    '''\
+    Returns request body (only in PUT) as str.'''
+
+    raise 'getbody not implemented'
+
+  def getpath( self ):
+    '''\
+    Returns cache location as str.'''
+
+    raise 'getpath not implemented'
+
+  def getsocket( self ):
+    '''\
+    Returns server socket.'''
+
+    raise 'getsocket not implemented'
 
 
-class Http( Request ):
+class HttpRequest( Request ):
 
   def __init__( self ):
 
@@ -40,9 +59,9 @@ class Http( Request ):
 
     return len( self.__strbuf ) == self.__size
 
-  def __lshift__( self, sock ):
+  def recv( self, sock ):
 
-    assert not self, '__lshift__ called after request is already complete'
+    assert not self, 'recv called after request is already complete'
 
     chunk = sock.recv( Params.MAXCHUNK )
     assert chunk, 'client connection closed before sending a complete header'
@@ -69,14 +88,14 @@ class Http( Request ):
     if url.startswith( 'http://' ):
       url = url[ 7: ]
       if self.__head[ 0 ] == 'GET':
-        self.__protocol = Protocol.Http
+        self.__protocol = Protocol.HttpProtocol
       else:
-        self.__protocol = Protocol.Blind
+        self.__protocol = Protocol.BlindProtocol
       self.__port = 80
     elif url.startswith( 'ftp://' ):
       url = url[ 6: ]
       assert self.__head[ 0 ] == 'GET', 'unsupported ftp operation: %s' % self.__head[ 0 ]
-      self.__protocol = Protocol.Ftp
+      self.__protocol = Protocol.FtpProtocol
       self.__port = 21
     else:
       raise AssertionError, 'invalid url: %s' % url
@@ -89,14 +108,14 @@ class Http( Request ):
     if sep != -1:
       self.__host, self.__port = self.__host[ :sep ], int( self.__host[ sep+1: ] )
 
-    if issubclass( self.__protocol, Protocol.Transfer ):
+    if issubclass( self.__protocol, Protocol.TransferProtocol ):
       self.__path = '%s:%i%s' % ( self.__host, self.__port, url )
       sep = self.__path.find( '?' )
       if sep != -1:
         self.__path = self.__path[ :sep ] #+ self.__path[ sep: ].replace( '/', '%2F' )
       print 'Cache position:', self.__path
       if Params.STATIC and os.path.isfile( Params.ROOT + self.__path ):
-        self.__protocol = Protocol.Static
+        self.__protocol = Protocol.StaticProtocol
     else:
       self.__path = None
 

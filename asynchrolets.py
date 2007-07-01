@@ -3,66 +3,42 @@ import sys, os, select, time, socket, traceback
 
 class Thread:
 
-  softspace = 0
   expire = None
   fileno = None
+  write = sys.stdout.write
+  softspace = 0
 
   def __init__( self, generator, timeout ):
 
     self.__generator = generator
     self.__timeout = timeout
-    self.__lines = [ '\n', time.strftime( '%D Created new thread\n' ) ]
-    self.__buffer = ' '
-
-  def write( self, string ):
-
-    self.__buffer += string
-    if self.softspace:
-      self.__lines.append( time.strftime( '%H:%M:%S' ) + self.__buffer )
-      self.__buffer = ' '
 
   def step( self, waitqueue, recvqueue, sendqueue ):
 
     try:
+      stdout = sys.stdout
+      sys.stdout = self
+      cmd, arg = self.__generator.next()
+    finally:
+      sys.stdout = stdout
 
-      try:
-        stdout = sys.stdout
-        sys.stdout = self
-        cmd, arg = self.__generator.next()
-      finally:
-        pass
-        sys.stdout = stdout
-
-      if cmd == 'WAIT':
-        if arg is None:
-          self.expire = None
-        else:
-          assert isinstance( arg, ( int, float ) ), 'invalid argument %r' % arg
-          self.expire = time.time() + arg
-        waitqueue.append( self )
+    if cmd == 'WAIT':
+      if arg is None:
+        self.expire = None
       else:
-        assert hasattr( arg, 'fileno' ), 'invalid argument %r' % arg
-        self.expire = time.time() + self.__timeout
-        self.fileno = arg.fileno
-        if cmd == 'RECV':
-          recvqueue.append( self )
-        elif cmd == 'SEND':
-          sendqueue.append( self )
-        else:
-          raise AssertionError, 'invalid command %r' % cmd
-
-    except KeyboardInterrupt:
-      raise
-    except StopIteration:
-      print >> self, 'Done'
-    except AssertionError, msg:
-      print >> self, 'Error:', msg
-    except:
-      print >> self, ''.join( traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback ) ).rstrip()
-
-  def __repr__( self ):
-
-    return 'thread %i waiting in line %i' % ( id( self.__generator ), self.__generator.gi_frame.f_lineno )
+        assert isinstance( arg, ( int, float ) ), 'invalid argument %r' % arg
+        self.expire = time.time() + arg
+      waitqueue.append( self )
+    else:
+      assert hasattr( arg, 'fileno' ), 'invalid argument %r' % arg
+      self.expire = time.time() + self.__timeout
+      self.fileno = arg.fileno
+      if cmd == 'RECV':
+        recvqueue.append( self )
+      elif cmd == 'SEND':
+        sendqueue.append( self )
+      else:
+        raise AssertionError, 'invalid command %r' % cmd
 
   def __del__( self ):
 
@@ -70,74 +46,98 @@ class Thread:
       stdout = sys.stdout
       sys.stdout = self
       del self.__generator # call destructors for output
+    finally:
+      sys.stdout = stdout
+
+
+class GatherThread( Thread ):
+
+  def __init__( self, generator, timeout ):
+
+    Thread.__init__( self, generator, timeout )
+
+    self.__lines = [ time.strftime( '%D\n' ) ]
+    self.__buffer = ''
+
+  def write( self, string ):
+
+    self.__buffer += string
+    if self.softspace:
+      self.__lines.append( time.strftime( '%H:%M:%S ' ) + self.__buffer )
+      self.__buffer = ''
+
+  def step( self, *args ):
+
+    try:
+      Thread.step( self, *args )
+    except KeyboardInterrupt:
+      raise
+    except StopIteration:
+      pass
+    except AssertionError, msg:
+      print >> self, 'Error:', msg
     except:
-      print ''.join( traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback ) ).rstrip()
+      print >> self, ''.join( traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback ) ).rstrip()
 
-    sys.stdout = stdout
-    sys.stdout.writelines( self.__lines )
+  def __del__( self ):
+
+    try:
+      Thread.__del__( self )
+    except:
+      print >> self, ''.join( traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback ) ).rstrip()
+
+    for line in self.__lines:
+      Thread.write( line )
 
 
-def queuerun( waitqueue, recvqueue, sendqueue ):
+class DebugThread( Thread ):
 
-  firsttimeout = None
+  def __init__( self, generator, timeout ):
 
-  i = 0
-  while len( waitqueue ) > i:
-    thistimeout = waitqueue[ i ].expire and waitqueue[ i ].expire - time.time()
-    if thistimeout < 0:
-      waitqueue[ i ].step( waitqueue, recvqueue, sendqueue )
-      del waitqueue[ i ]
+    Thread.__init__( self, generator, timeout )
+
+    self.__id = ' %s  ' % id( generator )
+    self.__frame = generator.gi_frame
+    self.__newline = True
+
+    print >> self, 'New thread'
+
+  def write( self, string ):
+
+    if self.__newline:
+      Thread.write( self.__id )
+
+    Thread.write( string )
+    self.__newline = self.softspace
+
+  def step( self, *args ):
+
+    print >> self, '> :%i' % self.__frame.f_lineno
+
+    try:
+      Thread.step( self, *args )
+    except StopIteration:
+      print >> self, 'Done'
     else:
-      firsttimeout = min( firsttimeout or 1e99, thistimeout )
-      i += 1
+      print >> self, '< :%i' % self.__frame.f_lineno
 
-  while len( recvqueue ) > 1:
-    thistimeout = recvqueue[ 1 ].expire - time.time()
-    if thistimeout < 0:
-      print >> recvqueue[ 1 ], 'Timed out'
-      del recvqueue[ 1 ]
-    else:
-      firsttimeout = min( firsttimeout or 1e99, thistimeout )
-      break
+  def __repr__( self ):
 
-  while len( sendqueue ) > 0:
-    thistimeout = sendqueue[ 0 ].expire - time.time()
-    if thistimeout < 0:
-      print >> recvqueue[ 1 ], 'Timed out'
-      del recvqueue[ 0 ]
-    else:
-      firsttimeout = min( firsttimeout or 1e99, thistimeout )
-      break
-
-# print
-# print 'wait:', waitqueue
-# print 'recv:', recvqueue[ 1: ]
-# print 'send:', sendqueue
-
-  canrecv, cansend, dummy = select.select( recvqueue, sendqueue, [], firsttimeout )
-  accept = False
-
-  for thread in canrecv:
-    if thread is recvqueue[ 0 ]:
-      accept = True
-    else:
-      recvqueue.remove( thread )
-      thread.step( waitqueue, recvqueue, sendqueue )
-
-  for thread in cansend:
-    sendqueue.remove( thread )
-    thread.step( waitqueue, recvqueue, sendqueue )
-
-  return accept
+    return 'thread %s waiting at :%i' % ( self.__id, self.__frame.f_lineno )
 
 
-def spawn( generator, port, timeout ):
+def spawn( generator, port, timeout, debug ):
 
   listener = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
   listener.setblocking( 0 )
   listener.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, listener.getsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR ) | 1 )
   listener.bind( ( '', port ) )
   listener.listen( 5 )
+
+  if debug:
+    myThread = DebugThread
+  else:
+    myThread = GatherThread
 
   print time.strftime( '%D' ), 'HTTP Replicator started'
 
@@ -146,14 +146,58 @@ def spawn( generator, port, timeout ):
     waitqueue = []
     recvqueue = [ listener ]
     sendqueue = []
+
     while True:
-      if queuerun( waitqueue, recvqueue, sendqueue ):
-        waitqueue.append( Thread( generator( *listener.accept() ), timeout ) )
+
+      firsttimeout = None
+
+      for i in range( len( waitqueue ) -1, -1, -1 ):
+        thistimeout = waitqueue[ i ].expire and waitqueue[ i ].expire - time.time()
+        if thistimeout < 0:
+          waitqueue[ i ].step( waitqueue, recvqueue, sendqueue )
+          del waitqueue[ i ]
+        else:
+          firsttimeout = min( firsttimeout or 1e99, thistimeout )
+
+      while len( recvqueue ) > 1:
+        thistimeout = recvqueue[ 1 ].expire - time.time()
+        if thistimeout < 0:
+          print >> recvqueue[ 1 ], 'Timed out'
+          del recvqueue[ 1 ]
+        else:
+          firsttimeout = min( firsttimeout or 1e99, thistimeout )
+          break
+
+      while len( sendqueue ) > 0:
+        thistimeout = sendqueue[ 0 ].expire - time.time()
+        if thistimeout < 0:
+          print >> sendqueue[ 0 ], 'Timed out'
+          del sendqueue[ 0 ]
+        else:
+          firsttimeout = min( firsttimeout or 1e99, thistimeout )
+          break
+
+      if not firsttimeout:
+        print time.strftime( '%D' ), 'Idle'
+
+      canrecv, cansend, dummy = select.select( recvqueue, sendqueue, [], firsttimeout )
+
+      for thread in canrecv:
+        if thread is recvqueue[ 0 ]:
+          waitqueue.append( myThread( generator( *listener.accept() ), timeout ) )
+        else:
+          recvqueue.remove( thread )
+          thread.step( waitqueue, recvqueue, sendqueue )
+
+      for thread in cansend:
+        sendqueue.remove( thread )
+        thread.step( waitqueue, recvqueue, sendqueue )
+
+      del canrecv, cansend, dummy, thread
 
   except KeyboardInterrupt:
     print
     print time.strftime( '%D' ), 'HTTP Replicator terminated'
   except:
-    print
     print time.strftime( '%D' ), 'HTTP Replicator crashed'
     raise

@@ -3,26 +3,38 @@ import Util, Params, time, sys, traceback
 
 class Response:
 
-  '''
-  Response
+  def __nonzero__( self ):
+    '''\
+    True iff all data has been transfered to the client.'''
 
-  * << - None; receive data from server
-  * >> - None; send data to client
-  * cansend - bool; data ready for sending
-  * canrecv - bool; ready for next data chunk '''
+    raise 'stopcriterium not implemented'
 
-  def __notimpl( self, descr ):
+  def send( self, client ):
+    '''\
+    No return. Sends data to client socket.'''
 
-    raise AssertionError, '%s not implemented in %s' % ( descr, self.__class__.__name__ )
+    raise 'send not implemented'
 
-  __nonzero__ = lambda self: self.__notimpl( 'stopcondition' )
-  __rshift__  = lambda self, sock: self.__notimpl( 'sending' )
-  __lshift__  = lambda self, sock: self.__notimpl( 'receiving' )
-  cansend     = lambda self: self.__notimpl( 'cansend' )
-  canrecv     = lambda self: self.__notimpl( 'canrecv' )
+  def recv( self, server ):
+    '''\
+    No return. Receives data from server socket.'''
+
+    raise 'recv not implemented'
+
+  def cansend( self ):
+    '''\
+    True iff data is available for sending to client.'''
+
+    raise 'cansend not implemented'
+
+  def canrecv( self ):
+    '''\
+    True iff transfer rate allows data to be received from client.'''
+
+    raise 'canrecv not implemented'
 
 
-class Blind( Response ):
+class BlindResponse( Response ):
 
   def __init__( self, protocol, request ):
 
@@ -36,14 +48,14 @@ class Blind( Response ):
 
     return self.__done
 
-  def __rshift__( self, sock ):
+  def send( self, sock ):
 
     bytes = sock.send( self.__strbuf )
     self.__strbuf = self.__strbuf[ bytes: ]
     if self.__closed and not self.__strbuf:
       self.__done = True
 
-  def __lshift__( self, sock ):
+  def recv( self, sock ):
 
     chunk = sock.recv( Params.MAXCHUNK )
     if chunk:
@@ -62,7 +74,7 @@ class Blind( Response ):
     return True
 
 
-class Cache( Response ):
+class CacheResponse( Response ):
 
   def __init__( self, protocol, request ):
 
@@ -116,7 +128,7 @@ class Cache( Response ):
 
     return not self.__strbuf and self.__pos == self.__end
 
-  def __rshift__( self, sock ):
+  def send( self, sock ):
 
     if self.__strbuf:
       bytes = sock.send( self.__strbuf )
@@ -129,7 +141,7 @@ class Cache( Response ):
       chunk = self.__file.read( bytes )
       self.__pos += sock.send( chunk )
 
-  def __lshift__( self, sock ):
+  def recv( self, sock ):
 
     chunk = sock.recv( Params.MAXCHUNK )
     self.__file.seek( 0, 2 )
@@ -153,7 +165,7 @@ class Cache( Response ):
     return True
 
 
-class NotFound( Response ):
+class NotFoundResponse( Response ):
 
   def __init__( self, protocol, request ):
 
@@ -164,7 +176,7 @@ class NotFound( Response ):
 
     return self.__done
 
-  def __rshift__( self, sock ):
+  def send( self, sock ):
 
     bytes = sock.send( self.__strbuf )
     self.__strbuf = self.__strbuf[ bytes: ]
@@ -176,7 +188,7 @@ class NotFound( Response ):
     return bool( self.__strbuf )
 
 
-class Exception( Response ):
+class ExceptionResponse( Response ):
 
   def __init__( self ):
 
@@ -186,13 +198,13 @@ class Exception( Response ):
     self.__strbuf = str( head ) + '\n'.join( body )
     self.__done = True
 
-    print 'Exception:', sys.exc_value or sys.exc_type
+    print ''.join( traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback ) ).rstrip()
 
   def __nonzero__( self ):
 
     return self.__done
 
-  def __rshift__( self, sock ):
+  def send( self, sock ):
 
     bytes = sock.send( self.__strbuf )
     self.__strbuf = self.__strbuf[ bytes: ]

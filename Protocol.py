@@ -1,38 +1,66 @@
 import Util, Params, Response, os, sys, time, socket
 
 
-# Protocol
-#
-# Handles initial server communication; joined in simultaneous downloads
-#
-# * << - None; receive data from server
-# * >> - None; send data to server
-# * getresponse - Response; final client-server communication
-# * gethead - Http; response header
-# * getbody - ( file, int ); response body file / size
-# * getsocket - socket; server
-# * canjoin - bool; capable of simultaneous use
-# * cansend - bool; data ready for sending
-
-
 class Protocol:
 
-  def __notimpl( self, descr ):
+  def __nonzero__( self ):
+    '''\
+    True iff all necessary negotiations have been made with the
+    server to start data transfer.'''
 
-    raise AssertionError, '%s not implemented in %s' % ( descr, self.__class__.__name__ )
+    raise 'stopcondition not implemented'
 
-  __nonzero__ = lambda self: self.__notimpl( 'stopcondition' )
-  __rshift__  = lambda self, sock: self.__notimpl( 'sending' )
-  __lshift__  = lambda self, sock: self.__notimpl( 'receiving' )
-  getresponse = lambda self: self.__notimpl( 'getresponse' )
-  getfile     = lambda self: self.__notimpl( 'getfile' )
-  getsize     = lambda self: self.__notimpl( 'getsize' )
-  getsocket   = lambda self: self.__notimpl( 'getsocket' )
-  canjoin     = lambda self: self.__notimpl( 'canjoin' )
-  cansend     = lambda self: self.__notimpl( 'cansend' )
+  def send( self, server ):
+    '''\
+    No return. Sends data to server socket.'''
+
+    raise 'sending not implemented'
+
+  def recv( self, server ):
+    '''\
+    No return. Receives data from server socket.'''
+
+    raise 'receiving not implemented'
+
+  def getresponse( self, request ):
+    '''\
+    Returns Response object for final data transfer. Hands request
+    and self as arguments.'''
+
+    raise 'getresponse not implemented'
+
+  def getfile( self ):
+    '''\
+    Returns cache file.'''
+
+    raise 'getfile not implemented'
+
+  def getsize( self ):
+    '''\
+    Returns target file size.'''
+
+    raise 'getsize not implemented'
+
+  def getsocket( self ):
+    '''\
+    Returns server socket.'''
+
+    raise 'getsocket not implemented'
+
+  def canjoin( self ):
+    '''\
+    True iff Protocol can stream data to multiple clients.'''
+
+    raise 'canjoin not implemented'
+
+  def cansend( self ):
+    '''\
+    True iff data is available for sending to client.'''
+
+    raise 'cansend not implemented'
 
 
-class Blind( Protocol ):
+class BlindProtocol( Protocol ):
 
   def __init__( self, request ):
 
@@ -45,14 +73,14 @@ class Blind( Protocol ):
 
     return not self.__strbuf
 
-  def __rshift__( self, sock ):
+  def send( self, sock ):
 
     bytes = sock.send( self.__strbuf )
     self.__strbuf = self.__strbuf[ bytes: ]
 
   def getresponse( self, request ):
 
-    return Response.Blind( self, request )
+    return Response.BlindResponse( self, request )
 
   def getsocket( self ):
 
@@ -67,7 +95,7 @@ class Blind( Protocol ):
     return bool( self.__strbuf )
 
 
-class Static( Protocol ):
+class StaticProtocol( Protocol ):
 
   def __init__( self, request ):
 
@@ -80,9 +108,13 @@ class Static( Protocol ):
 
     return True
 
+  def getsocket( self ):
+
+    return None
+
   def getresponse( self, request ):
 
-    return Response.Cache( self, request )
+    return Response.CacheResponse( self, request )
 
   def getfile( self ):
 
@@ -97,7 +129,7 @@ class Static( Protocol ):
     return True
 
 
-class Transfer( Protocol ):
+class TransferProtocol( Protocol ):
 
   def __init__( self, request ):
 
@@ -196,11 +228,11 @@ class Transfer( Protocol ):
 
 
 
-class Http( Transfer ):
+class HttpProtocol( TransferProtocol ):
 
   def __init__( self, request ):
 
-    Transfer.__init__( self, request )
+    TransferProtocol.__init__( self, request )
 
     self.__request = request
     self.__socket = request.getsocket()
@@ -230,14 +262,14 @@ class Http( Transfer ):
 
     return bool( self.__response )
 
-  def __rshift__( self, sock ):
+  def send( self, sock ):
 
     assert self.cansend(), '__rshift__ called while no data to send'
 
     bytes = sock.send( self.__strbuf )
     self.__strbuf = self.__strbuf[ bytes: ]
 
-  def __lshift__( self, sock ):
+  def recv( self, sock ):
 
     assert not self.cansend(), '__lshift__ called while still data to send'
     try:
@@ -252,14 +284,14 @@ class Http( Transfer ):
 
       print 'Chunked data; not cached'
 
-      self.__response = Response.Blind
+      self.__response = Response.BlindResponse
 
     elif head[ 1 ] == '200':
 
       size = int( head[ 'content-length' ] or -1 )
       self.setincache( partial=(0,size) )
       self.__socket.recv( len( head ) )
-      self.__response = Response.Cache
+      self.__response = Response.CacheResponse
 
     elif head[ 1 ] == '206' and self.hasincache( partial=True ):
 
@@ -274,13 +306,13 @@ class Http( Transfer ):
 
       self.setincache( partial=(beg,size) )
       self.__socket.recv( len( head ) )
-      self.__response = Response.Cache
+      self.__response = Response.CacheResponse
 
     elif head[ 1 ] == '304' and self.hasincache( partial=False ):
 
       self.setincache( partial=False )
       self.__socket.close()
-      self.__response = Response.Cache
+      self.__response = Response.CacheResponse
 
     elif head[ 1 ] == '412':
  
@@ -298,7 +330,7 @@ class Http( Transfer ):
  
     else:
 
-      self.__response = Response.Blind
+      self.__response = Response.BlindResponse
 
   def getresponse( self, request ):
 
@@ -315,11 +347,11 @@ class Http( Transfer ):
     return self.__strbuf != ''
 
 
-class Ftp( Transfer ):
+class FtpProtocol( TransferProtocol ):
 
   def __init__( self, request ):
 
-    Transfer.__init__( self, request )
+    TransferProcotol.__init__( self, request )
 
     self.__response = None
     self.__socket = request.getsocket()
@@ -329,14 +361,14 @@ class Ftp( Transfer ):
 
     return bool( self.__response )
 
-  def __rshift__( self, sock ):
+  def send( self, sock ):
 
     assert self.cansend(), '__rshift__ called while no data to send'
 
     bytes = sock.send( self.__strbuf )
     self.__strbuf = self.__strbuf[ bytes: ]
 
-  def __lshift__( self, sock ):
+  def recv( self, sock ):
 
     assert not self.cansend(), '__lshift__ called while still data to send'
 
@@ -401,7 +433,7 @@ class Ftp( Transfer ):
   def __handle550( self, line ):
 
     print 'File not found'
-    self.__response = Response.NotFound
+    self.__response = Response.NotFoundResponse
 
   def __handle150( self, line ):
 

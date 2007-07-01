@@ -9,6 +9,7 @@ MAXCHUNK = 1448 # maximum lan packet?
 FAMILY = socket.AF_INET
 STATIC = False
 TIMEOUT = 15
+DEBUG = False
 VERBOSE = False
 LIMIT = 0
 ROOT = os.getcwd() + os.sep
@@ -47,6 +48,8 @@ for _arg in _args:
       assert TIMEOUT > 0
     except:
       sys.exit( 'Error: %s requires a positive numerical argument' % _arg )
+  elif _arg == '--debug':
+    DEBUG = True
   elif _arg in ('-v', '--verbose'):
     VERBOSE = True
   elif _arg == '--limit':

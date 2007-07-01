@@ -1,4 +1,4 @@
-#! /usr/bin/python
+#! /usr/bin/env python
 
 
 import Params, Request, Response, asynchrolets, weakref
@@ -6,16 +6,18 @@ import Params, Request, Response, asynchrolets, weakref
 
 DOWNLOADS = weakref.WeakValueDictionary()
 
+
 def transaction( client, address ):
 
   print 'Accepted request from %s:%i' % address
 
-  request = Request.Http()
+  request = Request.HttpRequest()
   while not request:
     yield 'RECV', client
-    request << client
+    request.recv( client )
 
   try:
+
     while request in DOWNLOADS:
       protocol = DOWNLOADS[ request ]
       if not protocol.canjoin():
@@ -27,29 +29,30 @@ def transaction( client, address ):
       yield 'WAIT', None
     else:
       protocol = DOWNLOADS[ request ] = request.getprotocol()
+      server = protocol.getsocket()
       while not protocol:
-        server = protocol.getsocket()
         if protocol.cansend():
           yield 'SEND', server
-          protocol >> server
+          protocol.send( server )
         else:
           yield 'RECV', server
-          protocol << server
+          protocol.recv( server )
 
     response = protocol.getresponse( request )
+    server = protocol.getsocket()
   except:
-    response = Response.Exception()
+    response = Response.ExceptionResponse()
+    server = None
 
   while not response:
     if response.cansend():
       yield 'SEND', client
-      response >> client
+      response.send( client )
     elif response.canrecv():
-      server = protocol.getsocket()
       yield 'RECV', server
-      response << server
+      response.recv( server )
     else:
       yield 'WAIT', .5
 
 
-asynchrolets.spawn( transaction, port=Params.PORT, timeout=Params.TIMEOUT )
+asynchrolets.spawn( transaction, port=Params.PORT, timeout=Params.TIMEOUT, debug=Params.DEBUG )
