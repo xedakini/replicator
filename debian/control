@@ -3,11 +3,11 @@ Section: web
 Priority: optional
 Maintainer: Gertjan van Zwieten <gertjanvanzwieten@fastmail.fm>
 Build-Depends: debhelper (>= 4.0.0)
-Standards-Version: 3.6.0
+Standards-Version: 3.6.1
 
 Package: http-replicator
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: python (>= 2.3)
 Description: Replicating HTTP proxy server
  Replicator is a replicating HTTP proxy server. Files that are downloaded 
  through the proxy are transparently stored in a private cache, so an exact copy

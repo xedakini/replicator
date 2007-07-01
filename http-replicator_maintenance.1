@@ -1,0 +1,33 @@
+.TH "HTTP REPLICATOR MAINTENANCE" 1 "August 18, 2004"
+.SH NAME
+http-replicator_maintenance \- HTTP Replicator cache cleaner
+.SH SYNOPSIS
+.B http-replicator_maintenance
+.RI [ options ]
+.SH DESCRIPTION
+This manual page documents briefly the
+.B http-replicator_maintenance
+command.
+.PP
+This maintenance script is meant to be run as a cron task to keep a debian
+package cache built with
+.BR http-replicator (1)
+down in size. It does this by deleting the oldest versions of each package in
+cache. The number of packages to keep should be specified as a command line
+option. Please see the README or the website for more information:
+.PP
+http://gertjan.freezope.org/replicator
+.SH OPTIONS
+This programs follow the usual GNU command line syntax, with long options
+starting with two dashes (`-'). A summary of options is included below.
+.TP
+.BI "\-h, \-\-help "
+Show summary of options.
+.TP
+.BI "\-d, \-\-dir " dir
+The directory where cached files are stored.
+.TP
+.BI "\-k, \-\-keep " keep
+The number of most recent versions to keep.
+.SH AUTHOR
+Written by Gertjan van Zwieten <gertjanvanzwieten@fastmail.fm>.

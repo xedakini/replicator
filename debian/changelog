@@ -1,3 +1,16 @@
+http-replicator (3.0) unstable; urgency=low
+
+  * New feature: cache brower on proxy address
+  * New feature: client-side support for partial content
+  * Added alias option for caching mirrors on same location
+  * Added check to prevent access outside of cache through symlinks
+  * Added header length restriction to fight infinite request server attacks
+  * Created man pages for http-replicator and http-replicator_maintenance
+  * Fixed timestamp bug; files are now properly closed before changing mtime
+  * Suppressed size warning for chunked data
+
+ -- Gertjan van Zwieten <gertjanvanzwieten@fastmail.fm>  Sat, 27 Nov 2004 23:00:00 +0100
+
 http-replicator (2.1) unstable; urgency=low
 
   * Integrated daemon code in http-replicator

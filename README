@@ -1,9 +1,9 @@
 HISTORY 
 
-A while ago, I was looking for a way to cache my downloaded debian (unstable)
-packages. I have (control over) multiple computers, and it seems like a waste of
-time and bandwidth to download the same packages over and over again for each
-computer. So I looked into some existing solutions... 
+A while ago, I was looking for a way to cache my downloaded debian
+<http://www.debian.org> (unstable) packages. I have some computers on a LAN, and
+it seemed like a waste of time and bandwidth to download the same packages over
+and over again for each computer. So I looked into some existing solutions... 
 
 squid <http://www.squid-cache.org> 
 
@@ -25,12 +25,12 @@ These hosts are configured in both sources.list and the apt-proxy configuration
 file. I believe either location has its pros and cons, but in requiring both
 you'll end up with cons only. I've used it for a while, but I got a strange http
 error every now and then that screwed up apt so I had to constantly restart. 
-There is also a beta rewrite in python, which I also tried, but I don't remember
-being to satisfied with that either. 
+There is also a beta rewrite in python <http://www.python.org>, which I also
+tried, but I don't remember being to satisfied with that either. 
 
 apt-cacher <http://www.apt-cacher.org> 
 
-This one looked really promising. It is a specialised debian proxy server, just
+This one looked really promising. It is a specialized debian proxy server, just
 like apt-proxy, but it is written in perl as an apache module. Again, this isn't
 a real proxy, but this time sources are defined in sources.list only so that's
 an improvement. Moreover, this one works (!) and it even seems to store files in
@@ -41,7 +41,7 @@ idea of running an entire apache server for a debian cache only.
 
 debproxy <http://sourceforge.net/projects/debproxy> 
 
-Yet another specialised proxy server, a true proxy this time. As you can see
+Yet another specialized proxy server, a true proxy this time. As you can see
 from the "this project has not released any files" it never came out of cvs. I
 can't remember if I ever had it up and running. However judging from the
 description this project would have been ideal if it would have been finished. 
@@ -57,11 +57,13 @@ REPLICATOR
 Replicator is a general purpose proxy server. That is, not specifically geared
 towards debian caching. It can be used for any http client, for instance a web
 browser. While browsing the web it will simply save all the files that go
-through it. When a requested file is already in cache a check is added to the
-http header to see if the file is modified since the time it was cached. If it
-isn't than the file is served from cache, preventing it from being downloaded
-again. Real speed gains are obtained when the server is configured not to check
-for modifications but to serve the cached file directly. 
+through it. The data is transparently streamed to all clients simultaneously
+requesting the same file, so everything is downloaded only once. When a
+requested file is already in cache a check is added to the http header to see if
+the file is modified since the time it was cached. If it isn't than the file is
+served from cache, preventing it from being downloaded again. Real speed gains
+are obtained when the server is configured not to check for modifications but to
+serve the cached file directly. 
 
 To use replicator for debian caching modify or create /etc/apt/apt.conf to
 contain the following line: 
@@ -77,6 +79,17 @@ cached. As of version 2.0 replicator is also suitable for maintaining a gentoo
 below. And as of version 2.1 it is also possible to forward requests to an
 external proxy server. 
 
+In version 3.0 a lot of new features are introduced, such as... cache browsing! 
+Yes, that's right, replicator can now act as a web server. Simply visit the
+address where you have replicator configured to listen for proxy connections in
+a browser and you'll get an html listing of the files in cache. And the great
+thing is that the streaming principle still applies, so even incomplete files
+can be served. Another new feature is client-side support for range requests, so
+incomplete downloads can now be resumed. For a complete list of changes see the
+changelog <changelog>. All this added functionality required some fairly 'deep'
+changes in code. The interested will notice that the [LocalResponse] construct
+has disappeared, which is what I personally like most about this version :-). 
+
 The following command line options control the server: 
 
 * [-p, --port PORT]: 
@@ -87,22 +100,25 @@ The following command line options control the server:
   be used multiple times. 
 * [-d, --dir DIR]: 
   The directory to store the cached files in. By default files are simply saved
-  to the current directory. 
+  under the current directory. 
+* [-a, --alias STR]: 
+  Colon separated list of mirrors, i.e. hosts serving identical content. Useful
+  for caching (debian) packages from different mirrors to the same directory,
+  like this: 'cache/dir:host1/somepath:host2/other/path'. Can be used multiple
+  times. 
 * [-s, --static]: 
   Static mode: files are known to never change so files that are present are
   served from cache directly without contacting the server. Primarily useful for
   gentoo caching, not for debian because of the changing Packages.gz and Release
   files. 
 * [-f, --flat]: 
-  Flat mode: all files are saved in a single directory. Primary use for gentoo
-  but I have found another fun application in downloading apple_movie_trailers
-  <http://www.apple.com/trailers>. 
+  Flat mode: all files are saved in a single directory. Primary use for gentoo. 
 * [-e, --external]: 
   Forward requests to an external proxy server, specified as host:port or
   username:password@host:port if the server requires authentication. 
 * [-q, --quiet]: 
   Decrease verbosity. Messages on stdout all have a certain level of importancy. 
-  By repeadedly selecting this option the least important messages are skipped. 
+  By repeatedly selecting this option the least important messages are skipped. 
 
 Daemon options: 
 
@@ -151,5 +167,8 @@ Some websites that are somehow related to this project:
 
 * replicator home <http://gertjan.freezope.org/replicator> 
 * freshmeat project_page <http://freshmeat.net/projects/http-replicator> 
-* gentoo discussion forum <http://forums.gentoo.org/viewtopic.php?t=173226&postdays=0&postorder=asc&start=75> with replicator ebuild 
+* gentoo specific replicator howto <http://gentoo-wiki.com/HOWTO_Download_Cache_for_LAN-Http-Replicator> 
+* gentoo discussion forum <http://forums.gentoo.org/viewtopic.php?t=173226> with replicator ebuild 
 * overview <http://www.xhaus.com/alan/python/proxies.html> of http proxies written in python 
+* nice introduction <http://www.jmarshall.com/easy/http> to the HTTP protocol 
+* complete HTTP/1.1 protocol <http://www.w3.org/Protocols/rfc2616/rfc2616.html> 
