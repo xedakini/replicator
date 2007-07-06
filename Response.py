@@ -1,40 +1,7 @@
 import Util, Params, time, sys, traceback
 
 
-class Response:
-
-  def __nonzero__( self ):
-    '''\
-    True iff all data has been transfered to the client.'''
-
-    raise 'stopcriterium not implemented'
-
-  def send( self, client ):
-    '''\
-    No return. Sends data to client socket.'''
-
-    raise 'send not implemented'
-
-  def recv( self, server ):
-    '''\
-    No return. Receives data from server socket.'''
-
-    raise 'recv not implemented'
-
-  def cansend( self ):
-    '''\
-    True iff data is available for sending to client.'''
-
-    raise 'cansend not implemented'
-
-  def canrecv( self ):
-    '''\
-    True iff transfer rate allows data to be received from client.'''
-
-    raise 'canrecv not implemented'
-
-
-class BlindResponse( Response ):
+class BlindResponse:
 
   def __init__( self, protocol, request ):
 
@@ -44,7 +11,7 @@ class BlindResponse( Response ):
     self.__closed = False
     self.__done = False
 
-  def __nonzero__( self ):
+  def done( self ):
 
     return self.__done
 
@@ -74,7 +41,7 @@ class BlindResponse( Response ):
     return True
 
 
-class CacheResponse( Response ):
+class CacheResponse:
 
   def __init__( self, protocol, request ):
 
@@ -118,13 +85,13 @@ class CacheResponse( Response ):
     head[ 'Connection' ] = 'close'
     head[ 'Date' ] = time.strftime( Params.TIMEFMT, time.gmtime() )
 
-    if Params.VERBOSE:
+    if Params.VERBOSE > 1:
       print 'Sending to client:\n%r' % head
 
     self.__strbuf = str( head )
     self.__file = protocol.getfile()
 
-  def __nonzero__( self ):
+  def done( self ):
 
     return not self.__strbuf and self.__pos == self.__end
 
@@ -165,14 +132,14 @@ class CacheResponse( Response ):
     return True
 
 
-class NotFoundResponse( Response ):
+class NotFoundResponse:
 
   def __init__( self, protocol, request ):
 
     self.__strbuf = 'HTTP/1.1 404 Not Found\r\n\r\n'
     self.__done = False
 
-  def __nonzero__( self ):
+  def done( self ):
 
     return self.__done
 
@@ -188,7 +155,7 @@ class NotFoundResponse( Response ):
     return bool( self.__strbuf )
 
 
-class ExceptionResponse( Response ):
+class ExceptionResponse:
 
   def __init__( self ):
 
@@ -200,7 +167,7 @@ class ExceptionResponse( Response ):
 
     print ''.join( traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback ) ).rstrip()
 
-  def __nonzero__( self ):
+  def done( self ):
 
     return self.__done
 

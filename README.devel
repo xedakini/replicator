@@ -1,0 +1,173 @@
+The FIBER module
+================
+
+To be able to serve an arbitrary number of HTTP clients simultaneously,
+replicator separates independent transactions in fibers. Fibers can be though of
+as threads, except that they lack the overhead of real posix threads. Quoted
+from wikipedia [1]:
+
+  "Typically fibers are implemented entirely in userspace. As a result, context
+  switching between fibers in a process does not require any interaction with
+  the kernel at all and is therefore extremely efficient: a context switch can
+  be performed by locally saving the CPU registers used by the currently
+  executing fiber and loading the registers required by the fiber to be
+  executed. Since scheduling occurs in userspace, the scheduling policy can be
+  more easily tailored to the requirements of the program's workload."
+
+The last point can be considered an advantage over real threads, which have no
+control over place or time of switching and therefore require special care of
+being thread-safe. Fibers, on the other hand, switch at fixed points in code,
+which makes thread-safety considerably easier to achieve. The downside of fixed
+switching points is the risk of blocking calls in between, stalling the entire
+application. As the article continues:
+
+  "However, the use of blocking system calls in fibers can be problematic. If a
+  fiber performs a system call that blocks, the other fibers in the process are
+  unable to run until the system call returns. A typical example of this problem
+  is when performing I/O: most programs are written to perform I/O
+  synchronously. When an I/O operation is initiated, a system call is made, and
+  does not return until the I/O operation has been completed. In the intervening
+  period, the entire process is "blocked" by the kernel and cannot run, which
+  starves other fibers in the same process from executing."
+
+The above problem is a consequence of 'co-operative scheduling', which means
+that "a running fiber must explicitly 'yield' to allow another fiber to run". 
+In practice - or at least, replicator's practice, one needs only assure that
+fibers yield right before every I/O operation, and are resumed only after this
+operation is guaranteed not to block. To this end, fibers communicate the
+current state of communication before yielding to the schedular. Three states
+are supported:
+
+ * RECV: fiber is awaiting data
+ * SEND: fiber is queueing data
+ * WAIT: fiber is sleeping
+
+Argument to the first two states is the target socket, which the schedular adds
+to the total pool of 'select' monitored sockets. The third state will either
+wake the fiber after a certain time (WAIT #seconds), wake together with the
+first other fiber to resume operation (WAIT None), or force a queue run (WAIT
+0). The latter is useful in case heavy processing risks stalling the server even
+without blocking system calls. Note again that the responsibility of yielding in
+time is with the programmer.
+
+As of version 2.2 the Python language includes on object that can very easily be
+turned into the fiber just described: the generator [2]. Complete with a yield
+statement to both put the fiber on hold and communitate the state to the server
+(in the form of a state-argument tuple), this is precisely the kind of
+"resumable function" we're looking for. Other implementations of this idea speak
+of weightless threads [3], coroutines [4], microthreads, tasklets, etc. Also
+notable in this respect is Stackless Python [5], introducing true microthreads
+in the language itself, and stackless in PyPy [6]. And, lastly, there is the
+asyncore module [7] that is very similar to fibers except for its rigid
+framework. Indeed, the previous versions of replicator were based on this.
+
+A Python fiber terminates when either it returns or raises an exception. The
+schedular takes care that exceptions are handled without interfering with other
+fibers and prints an error message or, optionally, a complete traceback message.
+As for printing, the default behaviour is to withhold all output until the fiber
+terminates in order to have a better view of past per-fiber operation. This
+behaviour can be changed to direct output. Fibers need not worry about this; it
+is all handled by the schedular which replaces sys.stdout with the configured
+printer upon fiber activation. This to prevent tedius passing around of various
+log objects.
+
+Remains to explain how the system is put in action. This is by the fiber
+module's spawn method, which opens a socket at the specified localhost port and
+starts the main loop listening for incoming connections. For every such
+connection it creates an instance of the specified generator function. Two
+additional arguments are a timeout time, the time of inactivity after which a
+fiber is terminated, and a debug boolean flag to control printed output. The
+main loop is exited by sending SIGHUP or ^C, in either case raising a
+KeyboardInterrupt. Finally, note that a valid generator:
+
+ * takes two arguments: 1) the connecting socket and 2) its address
+ * yields only tuples of the form (state, argument)
+
+Other than that there are no restrictions. For example fiber code, read on.
+
+
+[1] http://en.wikipedia.org/wiki/Thread_%28computer_science%29
+[2] http://www.python.org/doc/2.2.3/whatsnew/node5.html
+[3] http://www.ibm.com/developerworks/library/l-pythrd.html
+[4] http://o2s.csail.mit.edu/o2s-wiki/multitask
+[5] http://www.stackless.com
+[6] http://codespeak.net/pypy/dist/pypy/doc/stackless.html
+[7] http://docs.python.org/lib/module-asyncore.html
+
+
+HTTP Replicator
+===============
+
+Now that fibers are defined, let's turn back momentarily to the beginning of
+this text - to be able to serve an arbitrary number of HTTP clients
+simultaneously, replicator separates independent transactions in fibers.
+Transactions, now, are complete lines of communication between client and
+server, from HTTP request to HTTP response - whether coming from a remote server
+or generated by the proxy - and all communication in between. Detailed behaviour
+depends on three things:
+
+ * client request
+ * current state of cache
+ * current downloads
+
+The client request is a property of the transaction and will not have to be
+communicated amongst threads. Furthermore, all threads have independent access
+to the cache, which leaves only the currently running downloads as data to be
+shared globally. Other than that, all transaction threads can run completely
+indepent of each other and need only be switched on and off at suitable times.
+
+
+Requests
+========
+
+* HttpRequest
+
+__init__()
+done()
+recv( client socket )
+
+When done:
+
+getprotocol()
+gethead()
+getbody()
+getpath()
+getsocket()
+__hash__()
+__eq__( other Request )
+
+
+Protocols
+=========
+
+* BlindProtocol
+* StaticProtocol
+* HttpProtocol : TransferProtocol
+* FtpProtocol : TransferProtocol
+
+__init__( Request )
+done()
+getsocket()
+send( server socket )
+canjoin()
+cansend()
+
+When done:
+
+getresponse( Request )
+
+
+Responses
+=========
+
+* BlindResponse
+* CacheResponse
+* NotFoundResponse
+* ExceptionResponse
+
+__init__( Protocol, Request )
+done()
+send()
+recv()
+cansend()
+canrecv()

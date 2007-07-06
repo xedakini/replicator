@@ -10,7 +10,7 @@ FAMILY = socket.AF_INET
 STATIC = False
 TIMEOUT = 15
 DEBUG = False
-VERBOSE = False
+VERBOSE = 0
 LIMIT = 0
 ROOT = os.getcwd() + os.sep
 SUFFIX = '.incomplete'
@@ -51,7 +51,7 @@ for _arg in _args:
   elif _arg == '--debug':
     DEBUG = True
   elif _arg in ('-v', '--verbose'):
-    VERBOSE = True
+    VERBOSE += 1
   elif _arg == '--limit':
     try:
       LIMIT = 1024 * float( _args.next() )

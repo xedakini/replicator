@@ -1,44 +1,82 @@
 import sys, os, select, time, socket, traceback
 
 
-class Thread:
+class InfType:
+
+  def __gt__( self, other ):
+
+    return True
+
+  def __lt__( self, other ):
+
+    return False
+
+  def __radd__( self, other ):
+
+    return self
+
+
+Inf = InfType()
+
+
+class SEND:
+
+  def __init__( self, sock ):
+
+    assert hasattr( sock, 'fileno' ), 'invalid SEND argument %r' % sock
+    self.sock = sock
+
+
+class RECV:
+
+  def __init__( self, sock ):
+
+    assert hasattr( sock, 'fileno' ), 'invalid RECV argument %r' % sock
+    self.sock = sock
+
+
+class WAIT:
+
+  def __init__( self, timeout = Inf ):
+
+    assert timeout.__class__ in ( int, float, InfType ), 'invalid WAIT argument %r' % timeout
+    self.timeout = timeout
+
+
+class Fiber:
 
   expire = None
   fileno = None
   write = sys.stdout.write
   softspace = 0
 
-  def __init__( self, generator, timeout ):
+  def __init__( self, generator, maxtimeout ):
 
     self.__generator = generator
-    self.__timeout = timeout
+    self.__maxtimeout = maxtimeout
 
   def step( self, waitqueue, recvqueue, sendqueue ):
 
     try:
       stdout = sys.stdout
       sys.stdout = self
-      cmd, arg = self.__generator.next()
+      state = self.__generator.next()
     finally:
       sys.stdout = stdout
 
-    if cmd == 'WAIT':
-      if arg is None:
-        self.expire = None
-      else:
-        assert isinstance( arg, ( int, float ) ), 'invalid argument %r' % arg
-        self.expire = time.time() + arg
+    if state.__class__ == WAIT:
+      self.expire = time.time() + state.timeout
       waitqueue.append( self )
+    elif state.__class__ == SEND:
+      self.expire = time.time() + self.__maxtimeout
+      self.fileno = state.sock.fileno
+      sendqueue.append( self )
+    elif state.__class__ == RECV:
+      self.expire = time.time() + self.__maxtimeout
+      self.fileno = state.sock.fileno
+      recvqueue.append( self )
     else:
-      assert hasattr( arg, 'fileno' ), 'invalid argument %r' % arg
-      self.expire = time.time() + self.__timeout
-      self.fileno = arg.fileno
-      if cmd == 'RECV':
-        recvqueue.append( self )
-      elif cmd == 'SEND':
-        sendqueue.append( self )
-      else:
-        raise AssertionError, 'invalid command %r' % cmd
+      raise AssertionError, 'invalid command %r' % cmd
 
   def __del__( self ):
 
@@ -50,11 +88,11 @@ class Thread:
       sys.stdout = stdout
 
 
-class GatherThread( Thread ):
+class GatherFiber( Fiber ):
 
-  def __init__( self, generator, timeout ):
+  def __init__( self, generator, maxtimeout ):
 
-    Thread.__init__( self, generator, timeout )
+    Fiber.__init__( self, generator, maxtimeout )
 
     self.__lines = [ time.strftime( '%D\n' ) ]
     self.__buffer = ''
@@ -69,7 +107,7 @@ class GatherThread( Thread ):
   def step( self, *args ):
 
     try:
-      Thread.step( self, *args )
+      Fiber.step( self, *args )
     except KeyboardInterrupt:
       raise
     except StopIteration:
@@ -82,32 +120,32 @@ class GatherThread( Thread ):
   def __del__( self ):
 
     try:
-      Thread.__del__( self )
+      Fiber.__del__( self )
     except:
       print >> self, ''.join( traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback ) ).rstrip()
 
     for line in self.__lines:
-      Thread.write( line )
+      Fiber.write( line )
 
 
-class DebugThread( Thread ):
+class DebugFiber( Fiber ):
 
-  def __init__( self, generator, timeout ):
+  def __init__( self, generator, maxtimeout ):
 
-    Thread.__init__( self, generator, timeout )
+    Fiber.__init__( self, generator, maxtimeout )
 
     self.__id = ' %s  ' % id( generator )
     self.__frame = generator.gi_frame
     self.__newline = True
 
-    print >> self, 'New thread'
+    print >> self, 'New fiber'
 
   def write( self, string ):
 
     if self.__newline:
-      Thread.write( self.__id )
+      Fiber.write( self.__id )
 
-    Thread.write( string )
+    Fiber.write( string )
     self.__newline = self.softspace
 
   def step( self, *args ):
@@ -115,7 +153,7 @@ class DebugThread( Thread ):
     print >> self, '> :%i' % self.__frame.f_lineno
 
     try:
-      Thread.step( self, *args )
+      Fiber.step( self, *args )
     except StopIteration:
       print >> self, 'Done'
     else:
@@ -123,10 +161,10 @@ class DebugThread( Thread ):
 
   def __repr__( self ):
 
-    return 'thread %s waiting at :%i' % ( self.__id, self.__frame.f_lineno )
+    return 'fiber %s waiting at :%i' % ( self.__id, self.__frame.f_lineno )
 
 
-def spawn( generator, port, timeout, debug ):
+def spawn( generator, port, maxtimeout, debug ):
 
   listener = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
   listener.setblocking( 0 )
@@ -135,9 +173,9 @@ def spawn( generator, port, timeout, debug ):
   listener.listen( 5 )
 
   if debug:
-    myThread = DebugThread
+    myFiber = DebugFiber
   else:
-    myThread = GatherThread
+    myFiber = GatherFiber
 
   print time.strftime( '%D' ), 'HTTP Replicator started'
 
@@ -149,51 +187,56 @@ def spawn( generator, port, timeout, debug ):
 
     while True:
 
-      firsttimeout = None
+      expire = Inf
 
       for i in range( len( waitqueue ) -1, -1, -1 ):
-        thistimeout = waitqueue[ i ].expire and waitqueue[ i ].expire - time.time()
-        if thistimeout < 0:
+        if waitqueue[ i ].expire is Inf or waitqueue[ i ].expire < time.time():
           waitqueue[ i ].step( waitqueue, recvqueue, sendqueue )
           del waitqueue[ i ]
         else:
-          firsttimeout = min( firsttimeout or 1e99, thistimeout )
+          expire = min( expire, waitqueue[ i ].expire )
 
       while len( recvqueue ) > 1:
-        thistimeout = recvqueue[ 1 ].expire - time.time()
-        if thistimeout < 0:
+        if recvqueue[ 1 ].expire < time.time():
           print >> recvqueue[ 1 ], 'Timed out'
           del recvqueue[ 1 ]
         else:
-          firsttimeout = min( firsttimeout or 1e99, thistimeout )
+          expire = min( expire, recvqueue[ 1 ].expire )
           break
 
       while len( sendqueue ) > 0:
-        thistimeout = sendqueue[ 0 ].expire - time.time()
-        if thistimeout < 0:
+        
+        if sendqueue[ 0 ].expire < time.time():
           print >> sendqueue[ 0 ], 'Timed out'
           del sendqueue[ 0 ]
         else:
-          firsttimeout = min( firsttimeout or 1e99, thistimeout )
+          expire = min( expire, sendqueue[ 0 ].expire )
           break
 
-      if not firsttimeout:
+      if expire is Inf:
         print time.strftime( '%D' ), 'Idle'
+        timeout = None
+      else:
+        timeout = expire - time.time()
 
-      canrecv, cansend, dummy = select.select( recvqueue, sendqueue, [], firsttimeout )
+      sys.stdout.flush()
 
-      for thread in canrecv:
-        if thread is recvqueue[ 0 ]:
-          waitqueue.append( myThread( generator( *listener.accept() ), timeout ) )
+      canrecv, cansend, dummy = select.select( recvqueue, sendqueue, [], timeout )
+
+      for fiber in canrecv:
+        if fiber is listener:
+          waitqueue.append( myFiber( generator( *listener.accept() ), maxtimeout ) )
         else:
-          recvqueue.remove( thread )
-          thread.step( waitqueue, recvqueue, sendqueue )
+          recvqueue.remove( fiber )
+          fiber.step( waitqueue, recvqueue, sendqueue )
+          del fiber
 
-      for thread in cansend:
-        sendqueue.remove( thread )
-        thread.step( waitqueue, recvqueue, sendqueue )
+      for fiber in cansend:
+        sendqueue.remove( fiber )
+        fiber.step( waitqueue, recvqueue, sendqueue )
+        del fiber
 
-      del canrecv, cansend, dummy, thread
+      del canrecv, cansend, dummy
 
   except KeyboardInterrupt:
     print

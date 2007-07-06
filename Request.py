@@ -1,67 +1,20 @@
 import Util, Params, Protocol, os, time, socket
 
 
-class Request:
-
-  def __nonzero__( self ):
-    '''\
-    True iff a complete request is received. Remaining functions
-    except for recv may be used only when True.'''
-
-    raise 'stopcondition not implemented'
-
-  def recv( self, client ):
-    '''\
-    No return. Receives data from client socket.'''
-
-    raise 'recv not implemented'
-
-  def getprotocol( self ):
-    '''\
-    Returns Protocol object for communication with server. Hands self
-    as argument; most functions will be called by Protocol.'''
-
-    raise 'getprotocol not implemented'
-
-  def gethead( self ):
-    '''\
-    Returns request header as Head object.'''
-
-    raise 'gethead not implemented'
-
-  def getbody( self ):
-    '''\
-    Returns request body (only in PUT) as str.'''
-
-    raise 'getbody not implemented'
-
-  def getpath( self ):
-    '''\
-    Returns cache location as str.'''
-
-    raise 'getpath not implemented'
-
-  def getsocket( self ):
-    '''\
-    Returns server socket.'''
-
-    raise 'getsocket not implemented'
-
-
-class HttpRequest( Request ):
+class HttpRequest:
 
   def __init__( self ):
 
     self.__strbuf = ''
     self.__size = -1
 
-  def __nonzero__( self ):
+  def done( self ):
 
     return len( self.__strbuf ) == self.__size
 
   def recv( self, sock ):
 
-    assert not self, 'recv called after request is already complete'
+    assert not self.done(), 'recv called after request is done'
 
     chunk = sock.recv( Params.MAXCHUNK )
     assert chunk, 'client connection closed before sending a complete header'
@@ -72,7 +25,7 @@ class HttpRequest( Request ):
         self.__head = Util.Head( self.__strbuf )
       except Util.Head.ParseError:
         return
-      if Params.VERBOSE:
+      if Params.VERBOSE > 1:
         print 'Received from client:\n%r' % self.__head
       body = int( self.__head[ 'content-length' ] or 0 )
       if self.__head[ 0 ] != 'POST':
@@ -82,7 +35,7 @@ class HttpRequest( Request ):
     if len( self.__strbuf ) < self.__size:
       return
 
-    assert self, 'request body exceeds content-length'
+    assert self.done(), 'request body exceeds content-length'
 
     url = self.__head[ 1 ]
     if url.startswith( 'http://' ):
@@ -112,8 +65,9 @@ class HttpRequest( Request ):
       self.__path = '%s:%i%s' % ( self.__host, self.__port, url )
       sep = self.__path.find( '?' )
       if sep != -1:
-        self.__path = self.__path[ :sep ] #+ self.__path[ sep: ].replace( '/', '%2F' )
-      print 'Cache position:', self.__path
+        self.__path = self.__path[ :sep ] + self.__path[ sep: ].replace( '/', '%2F' )
+      if Params.VERBOSE > 1:
+        print 'Cache position:', self.__path
       if Params.STATIC and os.path.isfile( Params.ROOT + self.__path ):
         self.__protocol = Protocol.StaticProtocol
     else:
@@ -130,46 +84,46 @@ class HttpRequest( Request ):
 
   def __hash__( self ):
 
-    assert self, '__hash__ called before request is complete'
+    assert self.done(), '__hash__ called before request is done'
 
     return hash( self.__path )
 
   def __eq__( self, other ):
 
-    assert self, '__eq__ called before request is complete'
+    assert self.done(), '__eq__ called before request is done'
 
     return self.__path and self.__path == other.__path
 
   def getprotocol( self ):
 
-    assert self, 'getprotocol called before request is complete'
+    assert self.done(), 'getprotocol called before request is done'
 
-    if Params.VERBOSE:
+    if Params.VERBOSE > 0:
       print 'Speaking', self.__protocol.__name__, 'on', self.__host
 
     return self.__protocol( self )
 
   def gethead( self ):
 
-    assert self, 'getrequest called before request is complete'
+    assert self.done(), 'getrequest called before request is done'
 
     return self.__head
 
   def getbody( self ):
 
-    assert self, 'getrequest called before request is complete'
+    assert self.done(), 'getrequest called before request is done'
 
     return self.__strbuf[ len( self.__head ): ]
 
   def getpath( self ):
 
-    assert self, 'getpath called before request is complete'
+    assert self.done(), 'getpath called before request is done'
 
     return self.__path
 
   def getsocket( self ):
 
-    assert self, 'getsocket called before request is complete'
+    assert self.done(), 'getsocket called before request is done'
 
     addrinfo = socket.getaddrinfo( self.__host, self.__port, Params.FAMILY, socket.SOCK_STREAM )
     family, socktype, proto, canonname, sockaddr = addrinfo[ 0 ]

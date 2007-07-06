@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 
-import Params, Request, Response, asynchrolets, weakref
+import Params, Request, Response, fiber, weakref
 
 
 DOWNLOADS = weakref.WeakValueDictionary()
@@ -12,8 +12,8 @@ def transaction( client, address ):
   print 'Accepted request from %s:%i' % address
 
   request = Request.HttpRequest()
-  while not request:
-    yield 'RECV', client
+  while not request.done():
+    yield fiber.RECV( client )
     request.recv( client )
 
   try:
@@ -23,19 +23,19 @@ def transaction( client, address ):
       if not protocol.canjoin():
         del DOWNLOADS[ request ]
         continue
-      if protocol:
+      if protocol.done():
         print 'Joined running download'
         break
-      yield 'WAIT', None
+      yield fiber.WAIT()
     else:
       protocol = DOWNLOADS[ request ] = request.getprotocol()
       server = protocol.getsocket()
-      while not protocol:
+      while not protocol.done():
         if protocol.cansend():
-          yield 'SEND', server
+          yield fiber.SEND( server )
           protocol.send( server )
         else:
-          yield 'RECV', server
+          yield fiber.RECV( server )
           protocol.recv( server )
 
     response = protocol.getresponse( request )
@@ -44,15 +44,15 @@ def transaction( client, address ):
     response = Response.ExceptionResponse()
     server = None
 
-  while not response:
+  while not response.done():
     if response.cansend():
-      yield 'SEND', client
+      yield fiber.SEND( client )
       response.send( client )
     elif response.canrecv():
-      yield 'RECV', server
+      yield fiber.RECV( server )
       response.recv( server )
     else:
-      yield 'WAIT', .5
+      yield fiber.WAIT( .5 )
 
 
-asynchrolets.spawn( transaction, port=Params.PORT, timeout=Params.TIMEOUT, debug=Params.DEBUG )
+fiber.spawn( transaction, Params.PORT, Params.TIMEOUT, Params.DEBUG )

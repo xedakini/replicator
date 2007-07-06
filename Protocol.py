@@ -1,66 +1,7 @@
 import Util, Params, Response, os, sys, time, socket
 
 
-class Protocol:
-
-  def __nonzero__( self ):
-    '''\
-    True iff all necessary negotiations have been made with the
-    server to start data transfer.'''
-
-    raise 'stopcondition not implemented'
-
-  def send( self, server ):
-    '''\
-    No return. Sends data to server socket.'''
-
-    raise 'sending not implemented'
-
-  def recv( self, server ):
-    '''\
-    No return. Receives data from server socket.'''
-
-    raise 'receiving not implemented'
-
-  def getresponse( self, request ):
-    '''\
-    Returns Response object for final data transfer. Hands request
-    and self as arguments.'''
-
-    raise 'getresponse not implemented'
-
-  def getfile( self ):
-    '''\
-    Returns cache file.'''
-
-    raise 'getfile not implemented'
-
-  def getsize( self ):
-    '''\
-    Returns target file size.'''
-
-    raise 'getsize not implemented'
-
-  def getsocket( self ):
-    '''\
-    Returns server socket.'''
-
-    raise 'getsocket not implemented'
-
-  def canjoin( self ):
-    '''\
-    True iff Protocol can stream data to multiple clients.'''
-
-    raise 'canjoin not implemented'
-
-  def cansend( self ):
-    '''\
-    True iff data is available for sending to client.'''
-
-    raise 'cansend not implemented'
-
-
-class BlindProtocol( Protocol ):
+class BlindProtocol:
 
   def __init__( self, request ):
 
@@ -69,7 +10,7 @@ class BlindProtocol( Protocol ):
     self.__socket = request.getsocket()
     self.__strbuf = str( request.gethead() ) + request.getbody()
 
-  def __nonzero__( self ):
+  def done( self ):
 
     return not self.__strbuf
 
@@ -95,7 +36,7 @@ class BlindProtocol( Protocol ):
     return bool( self.__strbuf )
 
 
-class StaticProtocol( Protocol ):
+class StaticProtocol:
 
   def __init__( self, request ):
 
@@ -104,7 +45,7 @@ class StaticProtocol( Protocol ):
     self.__file = open( Params.ROOT + request.getpath(), 'r' )
     self.__file.seek( 0, 2 )
 
-  def __nonzero__( self ):
+  def done( self ):
 
     return True
 
@@ -129,7 +70,7 @@ class StaticProtocol( Protocol ):
     return True
 
 
-class TransferProtocol( Protocol ):
+class TransferProtocol:
 
   def __init__( self, request ):
 
@@ -212,13 +153,13 @@ class TransferProtocol( Protocol ):
 
   def getfile( self ):
 
-    assert self, 'getfile called prematurely'
+    assert self.done(), 'getfile called before protocol is done'
 
     return self.__file
 
   def getsize( self ):
 
-    assert self, 'getsize called prematurely'
+    assert self.done(), 'getsize called before protocol is done'
 
     return self.__size
 
@@ -252,13 +193,13 @@ class HttpProtocol( TransferProtocol ):
       print 'Complete file in cache since', mtime
       head[ 'if-modified-since' ] = mtime
 
-    if Params.VERBOSE:
+    if Params.VERBOSE > 1:
       print 'Sending to server:\n%r' % head
 
     self.__strbuf = str( head )
     self.__response = None
 
-  def __nonzero__( self ):
+  def done( self ):
 
     return bool( self.__response )
 
@@ -277,7 +218,7 @@ class HttpProtocol( TransferProtocol ):
     except Util.Head.ParseError:
       return
 
-    if Params.VERBOSE:
+    if Params.VERBOSE > 1:
       print 'Received from server:\n%r' % head
 
     if head[ 'transfer-encoding' ] == 'chunked':
@@ -322,7 +263,7 @@ class HttpProtocol( TransferProtocol ):
       head[ 'range' ] = None
       head[ 'if-unmodified-since' ] = None
 
-      if Params.VERBOSE:
+      if Params.VERBOSE > 0:
         print 'Sending to server:\n%r' % head
 
       self.__strbuf = str( head )
@@ -334,7 +275,7 @@ class HttpProtocol( TransferProtocol ):
 
   def getresponse( self, request ):
 
-    assert self, 'getresponse called prematurely'
+    assert self.done(), 'getresponse called before protocol is done'
 
     return self.__response( self, request )
 
@@ -357,7 +298,7 @@ class FtpProtocol( TransferProtocol ):
     self.__socket = request.getsocket()
     self.__strbuf = ''
 
-  def __nonzero__( self ):
+  def done( self ):
 
     return bool( self.__response )
 
@@ -378,7 +319,7 @@ class FtpProtocol( TransferProtocol ):
       if not line.endswith( '\n' ):
         return
 
-      if Params.VERBOSE:
+      if Params.VERBOSE > 0:
         print '>', line.rstrip()
 
       sock.recv( len( line ) )
@@ -388,7 +329,7 @@ class FtpProtocol( TransferProtocol ):
         assert hasattr( self, func ), 'unknown response: %s' % line
         command = getattr( self, func )( line )
         if command:
-          if Params.VERBOSE:
+          if Params.VERBOSE > 0:
             print 'Sending', command
           self.__strbuf = command + '\r\n'
         return
@@ -452,7 +393,7 @@ class FtpProtocol( TransferProtocol ):
 
   def getresponse( self, request ):
 
-    assert self, 'getresponse called prematurely'
+    assert self.done(), 'getresponse called before protocol is done'
 
     return self.__response( self, request )
 
