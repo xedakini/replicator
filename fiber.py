@@ -50,10 +50,10 @@ class Fiber:
   write = sys.stdout.write
   softspace = 0
 
-  def __init__( self, generator, maxtimeout ):
+  def __init__( self, generator, timeout ):
 
     self.__generator = generator
-    self.__maxtimeout = maxtimeout
+    self.__timeout = timeout
 
   def step( self, waitqueue, recvqueue, sendqueue ):
 
@@ -68,11 +68,11 @@ class Fiber:
       self.expire = time.time() + state.timeout
       waitqueue.append( self )
     elif state.__class__ == SEND:
-      self.expire = time.time() + self.__maxtimeout
+      self.expire = time.time() + self.__timeout
       self.fileno = state.sock.fileno
       sendqueue.append( self )
     elif state.__class__ == RECV:
-      self.expire = time.time() + self.__maxtimeout
+      self.expire = time.time() + self.__timeout
       self.fileno = state.sock.fileno
       recvqueue.append( self )
     else:
@@ -90,11 +90,11 @@ class Fiber:
 
 class GatherFiber( Fiber ):
 
-  def __init__( self, generator, maxtimeout ):
+  def __init__( self, generator, timeout ):
 
-    Fiber.__init__( self, generator, maxtimeout )
+    Fiber.__init__( self, generator, timeout )
 
-    self.__lines = [ time.strftime( '%D\n' ) ]
+    self.__lines = []
     self.__buffer = ''
 
   def write( self, string ):
@@ -126,13 +126,14 @@ class GatherFiber( Fiber ):
 
     for line in self.__lines:
       Fiber.write( line )
+    Fiber.write( '\n' )
 
 
 class DebugFiber( Fiber ):
 
-  def __init__( self, generator, maxtimeout ):
+  def __init__( self, generator, timeout ):
 
-    Fiber.__init__( self, generator, maxtimeout )
+    Fiber.__init__( self, generator, timeout )
 
     self.__id = ' %s  ' % id( generator )
     self.__frame = generator.gi_frame
@@ -164,7 +165,7 @@ class DebugFiber( Fiber ):
     return 'fiber %s waiting at :%i' % ( self.__id, self.__frame.f_lineno )
 
 
-def spawn( generator, port, maxtimeout, debug ):
+def spawn( generator, port, timeout, debug ):
 
   listener = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
   listener.setblocking( 0 )
@@ -205,7 +206,6 @@ def spawn( generator, port, maxtimeout, debug ):
           break
 
       while len( sendqueue ) > 0:
-        
         if sendqueue[ 0 ].expire < time.time():
           print >> sendqueue[ 0 ], 'Timed out'
           del sendqueue[ 0 ]
@@ -215,17 +215,17 @@ def spawn( generator, port, maxtimeout, debug ):
 
       if expire is Inf:
         print time.strftime( '%D' ), 'Idle'
-        timeout = None
+        sys.stdout.flush()
+        canrecv, cansend, dummy = select.select( recvqueue, sendqueue, [] )
+        print time.strftime( '%D' ), 'Busy'
+        sys.stdout.flush()
+        print
       else:
-        timeout = expire - time.time()
-
-      sys.stdout.flush()
-
-      canrecv, cansend, dummy = select.select( recvqueue, sendqueue, [], timeout )
+        canrecv, cansend, dummy = select.select( recvqueue, sendqueue, [], expire - time.time() )
 
       for fiber in canrecv:
         if fiber is listener:
-          waitqueue.append( myFiber( generator( *listener.accept() ), maxtimeout ) )
+          waitqueue.append( myFiber( generator( *listener.accept() ), timeout ) )
         else:
           recvqueue.remove( fiber )
           fiber.step( waitqueue, recvqueue, sendqueue )
@@ -239,7 +239,6 @@ def spawn( generator, port, maxtimeout, debug ):
       del canrecv, cansend, dummy
 
   except KeyboardInterrupt:
-    print
     print time.strftime( '%D' ), 'HTTP Replicator terminated'
   except:
     print time.strftime( '%D' ), 'HTTP Replicator crashed'
