@@ -12,7 +12,7 @@ def transaction( client, address ):
   print 'Accepted request from %s:%i' % address
 
   request = Request.HttpRequest()
-  while not request.done():
+  while not request.Protocol:
     yield fiber.RECV( client )
     request.recv( client )
 
@@ -23,14 +23,14 @@ def transaction( client, address ):
       if not protocol.canjoin():
         del DOWNLOADS[ request ]
         continue
-      if protocol.done():
+      if protocol.Response:
         print 'Joined running download'
         break
       yield fiber.WAIT()
     else:
-      protocol = DOWNLOADS[ request ] = request.getprotocol()
+      protocol = DOWNLOADS[ request ] = request.Protocol( request )
       server = protocol.getsocket()
-      while not protocol.done():
+      while not protocol.Response:
         if protocol.cansend():
           yield fiber.SEND( server )
           protocol.send( server )
@@ -38,13 +38,13 @@ def transaction( client, address ):
           yield fiber.RECV( server )
           protocol.recv( server )
 
-    response = protocol.getresponse( request )
+    response = protocol.Response( protocol, request )
     server = protocol.getsocket()
   except:
     response = Response.ExceptionResponse()
     server = None
 
-  while not response.done():
+  while not response.Done:
     if response.cansend():
       yield fiber.SEND( client )
       response.send( client )

@@ -1,27 +1,27 @@
-import Util, Params, Response, os, sys, time, socket
+import Params, Response, os, sys, time, socket
 
 
-class BlindProtocol:
+class BlindHttpProtocol:
+
+  Response = None
 
   def __init__( self, request ):
 
     print 'Using blind protocol'
 
+    head, args, body = request.getall()
+
+    self.__strbuf = '\r\n'.join( [ ' '.join( head ) ] + map( ': '.join, args.items() ) + [ '', body ] )
     self.__socket = request.getsocket()
-    self.__strbuf = str( request.gethead() ) + request.getbody()
-
-  def done( self ):
-
-    return not self.__strbuf
 
   def send( self, sock ):
 
+    assert not self.Response, 'send called after protocol is done'
+
     bytes = sock.send( self.__strbuf )
     self.__strbuf = self.__strbuf[ bytes: ]
-
-  def getresponse( self, request ):
-
-    return Response.BlindResponse( self, request )
+    if not self.__strbuf:
+      self.Response = Response.BlindResponse
 
   def getsocket( self ):
 
@@ -33,10 +33,14 @@ class BlindProtocol:
 
   def cansend( self ):
 
-    return bool( self.__strbuf )
+    assert not self.Response, 'cansend called after protocol is done'
+
+    return True
 
 
 class StaticProtocol:
+
+  Response = Response.CacheResponse
 
   def __init__( self, request ):
 
@@ -45,17 +49,9 @@ class StaticProtocol:
     self.__file = open( Params.ROOT + request.getpath(), 'r' )
     self.__file.seek( 0, 2 )
 
-  def done( self ):
-
-    return True
-
   def getsocket( self ):
 
     return None
-
-  def getresponse( self, request ):
-
-    return Response.CacheResponse( self, request )
 
   def getfile( self ):
 
@@ -72,9 +68,9 @@ class StaticProtocol:
 
 class TransferProtocol:
 
-  def __init__( self, request ):
+  Response = None
 
-    assert not request.getbody(), 'http body not empty'
+  def __init__( self, request ):
 
     self.__path = request.getpath()
     self.__partial = False
@@ -153,20 +149,19 @@ class TransferProtocol:
 
   def getfile( self ):
 
-    assert self.done(), 'getfile called before protocol is done'
+    assert self.Response, 'getfile called before protocol is done'
 
     return self.__file
 
   def getsize( self ):
 
-    assert self.done(), 'getsize called before protocol is done'
+    assert self.Response, 'getsize called before protocol is done'
 
     return self.__size
 
   def canjoin( self ):
 
     return not self or self.__file
-
 
 
 class HttpProtocol( TransferProtocol ):
@@ -178,30 +173,26 @@ class HttpProtocol( TransferProtocol ):
     self.__request = request
     self.__socket = request.getsocket()
 
-    head = request.gethead()
+    head, args, body = request.getall()
+    assert body == '', 'message body not empty'
 
     if self.hasincache( partial=True ):
 
       size, mtime = self.hasincache( partial=True )
       print 'Partial file in cache since', mtime
-      head[ 'range' ] = 'bytes=%i-' % size
-      head[ 'if-unmodified-since' ] = mtime
+      args[ 'Range' ] = 'bytes=%i-' % size
+      args[ 'If-Unmodified-Since' ] = mtime
 
     elif self.hasincache( partial=False ):
 
       size, mtime = self.hasincache( partial=False )
       print 'Complete file in cache since', mtime
-      head[ 'if-modified-since' ] = mtime
+      args[ 'If-Modified-Since' ] = mtime
 
     if Params.VERBOSE > 1:
-      print 'Sending to server:\n%r' % head
+      print '\n > '.join( [ 'Sending to server:', ' '.join( head ) ] + map( ': '.join, args.items() ) )
 
-    self.__strbuf = str( head )
-    self.__response = None
-
-  def done( self ):
-
-    return bool( self.__response )
+    self.__strbuf = '\r\n'.join( [ ' '.join( head ) ] + map( ': '.join, args.items() ) + [ '', '' ] )
 
   def send( self, sock ):
 
@@ -213,31 +204,42 @@ class HttpProtocol( TransferProtocol ):
   def recv( self, sock ):
 
     assert not self.cansend(), '__lshift__ called while still data to send'
-    try:
-      head = Util.Head( sock.recv( Params.MAXCHUNK, socket.MSG_PEEK ) )
-    except Util.Head.ParseError:
+
+    lines = sock.recv( Params.MAXCHUNK, socket.MSG_PEEK ).splitlines( True )
+    headlen = len( lines[ 0 ] )
+    head = lines.pop( 0 ).split()
+    args = {}
+    for line in lines:
+      headlen += len( line )
+      if line == '\r' or line == '\r\n':
+        break
+      elif ':' in line:
+        key, value = line.split( ':', 1 )
+        args[ key.title() ] = value.strip()
+      else:
+        print 'Ignored invalid header line %r' % line
+    else:
       return
-
     if Params.VERBOSE > 1:
-      print 'Received from server:\n%r' % head
+      print '\n > '.join( [ 'Received from server:', ' '.join( head ) ] + map( ': '.join, args.items() ) )
 
-    if head[ 'transfer-encoding' ] == 'chunked':
+    if args.get( 'Transfer-Encoding' ) == 'chunked':
 
       print 'Chunked data; not cached'
 
-      self.__response = Response.BlindResponse
+      self.Response = Response.BlindResponse
 
     elif head[ 1 ] == '200':
 
-      size = int( head[ 'content-length' ] or -1 )
+      size = int( args.get( 'Content-Length', -1 ) )
       self.setincache( partial=(0,size) )
-      self.__socket.recv( len( head ) )
-      self.__response = Response.CacheResponse
+      self.__socket.recv( headlen )
+      self.Response = Response.CacheResponse
 
     elif head[ 1 ] == '206' and self.hasincache( partial=True ):
 
-      range = head[ 'content-range' ]
-      assert range and range.startswith( 'bytes ' ), 'invalid content-range'
+      range = args[ 'Content-Range' ]
+      assert range.startswith( 'bytes ' ), 'invalid content-range'
       range, size = range[ 6: ].split( '/' )
       beg, end = range.split( '-' )
       size = int( size )
@@ -246,38 +248,33 @@ class HttpProtocol( TransferProtocol ):
       assert size == end + 1
 
       self.setincache( partial=(beg,size) )
-      self.__socket.recv( len( head ) )
-      self.__response = Response.CacheResponse
+      self.__socket.recv( headlen )
+      self.Response = Response.CacheResponse
 
     elif head[ 1 ] == '304' and self.hasincache( partial=False ):
 
       self.setincache( partial=False )
       self.__socket.close()
-      self.__response = Response.CacheResponse
+      self.Response = Response.CacheResponse
 
     elif head[ 1 ] == '412':
  
       print 'File has changed, resending request for complete file'
 
-      head = self.__request.gethead()
-      head[ 'range' ] = None
-      head[ 'if-unmodified-since' ] = None
+      head_, args_, body_ = request.getall()
 
-      if Params.VERBOSE > 0:
-        print 'Sending to server:\n%r' % head
+      head_.pop( 'Range', None )
+      head_.pop( 'If-Unmodified-Since', None )
 
-      self.__strbuf = str( head )
+      if Params.VERBOSE > 1:
+        print '\n > '.join( [ 'Sending to server:', ' '.join( head_ ) ] + map( ': '.join, args_.items() ) )
+
+      self.__strbuf = '\r\n'.join( [ ' '.join( head_ ) ] + map( ': '.join, args_.items() ) + [ '', '' ] )
       self.__socket = self.__request.getsocket()
  
     else:
 
-      self.__response = Response.BlindResponse
-
-  def getresponse( self, request ):
-
-    assert self.done(), 'getresponse called before protocol is done'
-
-    return self.__response( self, request )
+      self.Response = Response.BlindResponse
 
   def getsocket( self ):
 
@@ -294,13 +291,8 @@ class FtpProtocol( TransferProtocol ):
 
     TransferProcotol.__init__( self, request )
 
-    self.__response = None
     self.__socket = request.getsocket()
     self.__strbuf = ''
-
-  def done( self ):
-
-    return bool( self.__response )
 
   def send( self, sock ):
 
@@ -374,7 +366,7 @@ class FtpProtocol( TransferProtocol ):
   def __handle550( self, line ):
 
     print 'File not found'
-    self.__response = Response.NotFoundResponse
+    self.Response = Response.NotFoundResponse
 
   def __handle150( self, line ):
 
@@ -388,14 +380,8 @@ class FtpProtocol( TransferProtocol ):
 
     self.setincache( partial=(beg,end) )
 
-    self.__response = StreamBuffer
+    self.Response = StreamBuffer
     self.__socket = self.__datasocket
-
-  def getresponse( self, request ):
-
-    assert self.done(), 'getresponse called before protocol is done'
-
-    return self.__response( self, request )
 
   def getsocket( self ):
 

@@ -1,54 +1,63 @@
-import Util, Params, Protocol, os, time, socket
+import Params, Protocol, os, time, socket
 
 
 class HttpRequest:
 
+  Protocol = None
+
   def __init__( self ):
 
-    self.__strbuf = ''
+    self.__body = ''
     self.__size = -1
-
-  def done( self ):
-
-    return len( self.__strbuf ) == self.__size
+    self.__head = None
+    self.__args = {}
 
   def recv( self, sock ):
 
-    assert not self.done(), 'recv called after request is done'
+    assert not self.Protocol, 'recv called after request is done'
 
     chunk = sock.recv( Params.MAXCHUNK )
     assert chunk, 'client connection closed before sending a complete header'
-    self.__strbuf += chunk
+    self.__body += chunk
 
     if self.__size == -1:
-      try:
-        self.__head = Util.Head( self.__strbuf )
-      except Util.Head.ParseError:
+      while '\n' in self.__body:
+        line, self.__body = self.__body.split( '\n', 1 )
+        if line == '\r' or line == '\r\n':
+          break
+        elif not self.__head:
+          self.__head = line.split()
+          assert len( self.__head ) == 3, 'invalid head %r' % line
+        elif ':' in line:
+          key, value = line.split( ':', 1 )
+          self.__args[ key.title() ] = value.strip()
+        else:
+          print 'Ignored invalid header line %r' % line
+      else:
         return
       if Params.VERBOSE > 1:
-        print 'Received from client:\n%r' % self.__head
-      body = int( self.__head[ 'content-length' ] or 0 )
+        print '\n > '.join( [ 'Received from client:', ' '.join( self.__head ) ] + map( ': '.join, self.__args.items() ) )
+      self.__size = int( self.__args.get( 'Content-Length', 0 ) )
       if self.__head[ 0 ] != 'POST':
-        assert not body, '%s request can not have a message body' % self.__head[ 0 ]
-      self.__size = len( self.__head ) + body
+        assert not self.__size, '%s request has message body' % self.__head[ 0 ]
 
-    if len( self.__strbuf ) < self.__size:
+    if len( self.__body ) < self.__size:
       return
 
-    assert self.done(), 'request body exceeds content-length'
+    assert len( self.__body ) == self.__size, 'request body exceeds content-length'
 
     url = self.__head[ 1 ]
     if url.startswith( 'http://' ):
       url = url[ 7: ]
       if self.__head[ 0 ] == 'GET':
-        self.__protocol = Protocol.HttpProtocol
+        self.Protocol = Protocol.HttpProtocol
       else:
-        self.__protocol = Protocol.BlindProtocol
+        self.Protocol = Protocol.BlindHttpProtocol
       self.__port = 80
     elif url.startswith( 'ftp://' ):
       url = url[ 6: ]
       assert self.__head[ 0 ] == 'GET', 'unsupported ftp operation: %s' % self.__head[ 0 ]
-      self.__protocol = Protocol.FtpProtocol
+      self.Protocol = Protocol.FtpProtocol
       self.__port = 21
     else:
       raise AssertionError, 'invalid url: %s' % url
@@ -61,7 +70,7 @@ class HttpRequest:
     if sep != -1:
       self.__host, self.__port = self.__host[ :sep ], int( self.__host[ sep+1: ] )
 
-    if issubclass( self.__protocol, Protocol.TransferProtocol ):
+    if issubclass( self.Protocol, Protocol.TransferProtocol ):
       self.__path = '%s:%i%s' % ( self.__host, self.__port, url )
       sep = self.__path.find( '?' )
       if sep != -1:
@@ -69,61 +78,52 @@ class HttpRequest:
       if Params.VERBOSE > 1:
         print 'Cache position:', self.__path
       if Params.STATIC and os.path.isfile( Params.ROOT + self.__path ):
-        self.__protocol = Protocol.StaticProtocol
+        self.Protocol = Protocol.StaticProtocol
     else:
       self.__path = None
 
     self.__head[ 1 ] = url
-    self.__head[ 'host' ] = '%s:%i' % ( self.__host, self.__port )
-    self.__head[ 'keep-alive' ] = None
-    self.__head[ 'accept-encoding' ] = None
-    self.__head[ 'proxy-connection' ] = None
-    self.__head[ 'proxy-authorization' ] = None
-    self.__head[ 'connection' ] = 'close'
-    self.__head[ 'date' ] = time.strftime( Params.TIMEFMT, time.gmtime() )
+    self.__args[ 'Host' ] = '%s:%i' % ( self.__host, self.__port )
+    self.__args[ 'Connection' ] = 'close'
+    self.__args[ 'Date' ] = time.strftime( Params.TIMEFMT, time.gmtime() )
+    self.__args.pop( 'Keep-Alive', None )
+    self.__args.pop( 'Accept-Encoding', None )
+    self.__args.pop( 'Proxy-Connection', None )
+    self.__args.pop( 'Proxy-Authorization', None )
 
   def __hash__( self ):
 
-    assert self.done(), '__hash__ called before request is done'
+    assert self.Protocol, '__hash__ called before request is done'
 
     return hash( self.__path )
 
   def __eq__( self, other ):
 
-    assert self.done(), '__eq__ called before request is done'
+    assert self.Protocol, '__eq__ called before request is done'
 
     return self.__path and self.__path == other.__path
 
-  def getprotocol( self ):
+  def getall( self ):
 
-    assert self.done(), 'getprotocol called before request is done'
+    assert self.Protocol, 'getrequest called before request is done'
 
-    if Params.VERBOSE > 0:
-      print 'Speaking', self.__protocol.__name__, 'on', self.__host
+    return self.__head[ : ], self.__args.copy(), self.__body
 
-    return self.__protocol( self )
+  def getarg( self, key ):
 
-  def gethead( self ):
+    assert self.Protocol, 'getrequest called before request is done'
 
-    assert self.done(), 'getrequest called before request is done'
-
-    return self.__head
-
-  def getbody( self ):
-
-    assert self.done(), 'getrequest called before request is done'
-
-    return self.__strbuf[ len( self.__head ): ]
+    return self.__args.get( key )
 
   def getpath( self ):
 
-    assert self.done(), 'getpath called before request is done'
+    assert self.Protocol, 'getpath called before request is done'
 
     return self.__path
 
   def getsocket( self ):
 
-    assert self.done(), 'getsocket called before request is done'
+    assert self.Protocol, 'getsocket called before request is done'
 
     addrinfo = socket.getaddrinfo( self.__host, self.__port, Params.FAMILY, socket.SOCK_STREAM )
     family, socktype, proto, canonname, sockaddr = addrinfo[ 0 ]
