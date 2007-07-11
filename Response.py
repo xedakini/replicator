@@ -45,7 +45,7 @@ class CacheResponse:
   def __init__( self, protocol, request ):
 
     size = protocol.getsize()
-    range = request.getarg( 'Range' )
+    range = request.getargs( 'Range' )
     if range:
       assert range.startswith( 'bytes=' )
       sep = range.find( '-', 6 )
@@ -101,8 +101,7 @@ class CacheResponse:
         bytes = self.__end - self.__pos
       chunk = self.__file.read( bytes )
       self.__pos += sock.send( chunk )
-      if self.__pos == self.__end:
-        self.Done = True
+      self.Done = ( self.__pos >= self.__end )
 
   def recv( self, sock ):
 
@@ -110,10 +109,12 @@ class CacheResponse:
     self.__file.seek( 0, 2 )
     if chunk:
       self.__file.write( chunk )
-    elif self.__end == -1:
-      self.__end = self.__file.tell()
     else:
-      assert self.__end == self.__file.tell(), 'connection closed too early'
+      if self.__end == -1:
+        self.__end = self.__file.tell()
+      else:
+        assert self.__end == self.__file.tell(), 'connection closed too early'
+      self.Done = ( self.__pos >= self.__end )
 
   def cansend( self ):
 

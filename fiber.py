@@ -135,7 +135,7 @@ class DebugFiber( Fiber ):
 
     Fiber.__init__( self, generator, timeout )
 
-    self.__id = ' %s  ' % id( generator )
+    self.__id = '%s : ' % id( generator )
     self.__frame = generator.gi_frame
     self.__newline = True
 
@@ -151,14 +151,14 @@ class DebugFiber( Fiber ):
 
   def step( self, *args ):
 
-    print >> self, '> :%i' % self.__frame.f_lineno
-
     try:
+      enter = self.__frame.f_lineno
       Fiber.step( self, *args )
+      leave = self.__frame.f_lineno
     except StopIteration:
       print >> self, 'Done'
     else:
-      print >> self, '< :%i' % self.__frame.f_lineno
+      print >> self, '%i -> %i' % ( enter, leave )
 
   def __repr__( self ):
 

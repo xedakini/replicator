@@ -53,37 +53,27 @@ class HttpRequest:
         self.Protocol = Protocol.HttpProtocol
       else:
         self.Protocol = Protocol.BlindHttpProtocol
-      self.__port = 80
+      port = 80
     elif url.startswith( 'ftp://' ):
       url = url[ 6: ]
       assert self.__head[ 0 ] == 'GET', 'unsupported ftp operation: %s' % self.__head[ 0 ]
       self.Protocol = Protocol.FtpProtocol
-      self.__port = 21
+      port = 21
     else:
       raise AssertionError, 'invalid url: %s' % url
 
     sep = url.find( '/' )
     if sep == -1:
       url += '/'
-    self.__host, url = url[ :sep ], url[ sep: ]
-    sep = self.__host.find( ':' )
+    host, url = url[ :sep ], url[ sep: ]
+    sep = host.find( ':' )
     if sep != -1:
-      self.__host, self.__port = self.__host[ :sep ], int( self.__host[ sep+1: ] )
+      host, port = host[ :sep ], int( host[ sep+1: ] )
 
-    if issubclass( self.Protocol, Protocol.TransferProtocol ):
-      self.__path = '%s:%i%s' % ( self.__host, self.__port, url )
-      sep = self.__path.find( '?' )
-      if sep != -1:
-        self.__path = self.__path[ :sep ] + self.__path[ sep: ].replace( '/', '%2F' )
-      if Params.VERBOSE > 1:
-        print 'Cache position:', self.__path
-      if Params.STATIC and os.path.isfile( Params.ROOT + self.__path ):
-        self.Protocol = Protocol.StaticProtocol
-    else:
-      self.__path = None
-
+    self.__addr = host, port
     self.__head[ 1 ] = url
-    self.__args[ 'Host' ] = '%s:%i' % ( self.__host, self.__port )
+    self.__head[ 2 ] = 'HTTP/1.1'
+    self.__args[ 'Host' ] = '%s:%i' % self.__addr
     self.__args[ 'Connection' ] = 'close'
     self.__args[ 'Date' ] = time.strftime( Params.TIMEFMT, time.gmtime() )
     self.__args.pop( 'Keep-Alive', None )
@@ -95,42 +85,48 @@ class HttpRequest:
 
     assert self.Protocol, '__hash__ called before request is done'
 
-    return hash( self.__path )
+    return hash( self.__head[ 1 ] )
 
   def __eq__( self, other ):
 
     assert self.Protocol, '__eq__ called before request is done'
 
-    return self.__path and self.__path == other.__path
+    return self.__addr == other.__addr and self.__head == other.__head
 
-  def getall( self ):
+  def gethead( self, index = None ):
 
-    assert self.Protocol, 'getrequest called before request is done'
+    assert self.Protocol, 'gethead called before request is done'
 
-    return self.__head[ : ], self.__args.copy(), self.__body
+    if index is not None:
+      return self.__head[ index ]
 
-  def getarg( self, key ):
+    return self.__head[ : ]
 
-    assert self.Protocol, 'getrequest called before request is done'
+  def getargs( self, key = None ):
 
-    return self.__args.get( key )
+    assert self.Protocol, 'getargs called before request is done'
 
-  def getpath( self ):
+    if key is not None:
+      return self.__args.get( key )
 
-    assert self.Protocol, 'getpath called before request is done'
+    return self.__args.copy()
 
-    return self.__path
+  def getbody( self ):
+
+    assert self.Protocol, 'getbody called before request is done'
+
+    return self.__body
 
   def getsocket( self ):
 
     assert self.Protocol, 'getsocket called before request is done'
 
-    addrinfo = socket.getaddrinfo( self.__host, self.__port, Params.FAMILY, socket.SOCK_STREAM )
+    addrinfo = socket.getaddrinfo( self.__addr[ 0 ], self.__addr[ 1 ], Params.FAMILY, socket.SOCK_STREAM )
     family, socktype, proto, canonname, sockaddr = addrinfo[ 0 ]
     sock = socket.socket( family, socktype, proto )
     sock.setblocking( 0 )
     sock.connect_ex( sockaddr )
 
-    print 'Connecting to', self.__host, '(%s:%i)' % sockaddr
+    print 'Connecting to', self.__addr[ 0 ], '(%s:%i)' % sockaddr
 
     return sock
