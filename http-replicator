@@ -53,4 +53,6 @@ def transaction( client, address ):
     else:
       yield fiber.WAIT( .5 )
 
+  print 'Done'
+
 fiber.spawn( transaction, Params.PORT, Params.TIMEOUT, Params.DEBUG )

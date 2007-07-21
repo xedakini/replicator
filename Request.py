@@ -60,40 +60,25 @@ class HttpRequest( Util.Http ):
     if sep != -1:
       self.__host, self.__port = host[ :sep ], int( host[ sep+1: ] )
 
-  def body( self ):
+  def cmd( self ):
 
     assert self.Protocol
-    return self.__body
+    return self.__cmd
 
   def addr( self ):
 
     assert self.Protocol
     return self.__host, self.__port
 
-  def cmd( self ):
-
-    assert self.Protocol
-    return self.__cmd
-
   def path( self ):
 
     assert self.Protocol
     return self.__path
 
-  def connect( self ):
+  def body( self ):
 
     assert self.Protocol
-
-    addrinfo = socket.getaddrinfo( self.__host, self.__port, Params.FAMILY, socket.SOCK_STREAM )
-    family, socktype, proto, canonname, sockaddr = addrinfo[ 0 ]
-
-    print 'Connecting to', self.__host, '(%s:%i)' % sockaddr
-
-    sock = socket.socket( family, socktype, proto )
-    sock.setblocking( 0 )
-    sock.connect_ex( sockaddr )
-
-    return sock
+    return self.__body
 
   def __hash__( self ):
 

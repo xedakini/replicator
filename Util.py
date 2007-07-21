@@ -113,12 +113,10 @@ class Cache:
 
   def mtime( self ):
 
-    assert self.__file is None
     return self.__mtime
 
   def size( self ):
 
-    assert self.__file is not None
     return self.__size
 
   def file( self ):
@@ -194,8 +192,7 @@ class Cache:
     self.__file.close()
 
     if size != self.__size:
-      print 'Wrong file size; removing file from cache'
-      os.remove( self.__path + Params.SUFFIX )
+      print 'Wrong file size; leaving partial file in cache'
       return
 
     print 'Finalizing', self.__path

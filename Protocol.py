@@ -1,6 +1,27 @@
 import Params, Response, Util, time, socket
 
 
+DNSCache = {}
+
+def connect( addr ):
+
+  if addr not in DNSCache:
+
+    print 'Quering name server for', addr[ 0 ]
+
+    DNSCache[ addr ] = socket.getaddrinfo( addr[ 0 ], addr[ 1 ], Params.FAMILY, socket.SOCK_STREAM )
+
+  family, socktype, proto, canonname, sockaddr = DNSCache[ addr ][ 0 ]
+
+  print 'Connecting to %s:%i' % sockaddr
+
+  sock = socket.socket( family, socktype, proto )
+  sock.setblocking( 0 )
+  sock.connect_ex( sockaddr )
+
+  return sock
+
+
 class HttpProtocol( Util.Cache, Util.Http ):
 
   Response = None
@@ -29,13 +50,13 @@ class HttpProtocol( Util.Cache, Util.Http ):
       print 'Checking if cache is up to date'
       args[ 'If-Modified-Since' ] = time.strftime( Params.TIMEFMT, time.gmtime( self.mtime() ) )
     elif self.partial():
-      print 'Resuming partial file'
+      print 'Requesting resume of partial file'
       args[ 'If-Unmodified-Since' ] = time.strftime( Params.TIMEFMT, time.gmtime( self.mtime() ) )
       args[ 'Range' ] = 'bytes=%i-' % self.size()
 
     self.__strbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', request.body() ] )
     self.__request = request
-    self.__socket = request.connect()
+    self.__socket = connect( request.addr() )
 
   def send( self, sock ):
 
@@ -53,7 +74,14 @@ class HttpProtocol( Util.Cache, Util.Http ):
 
     status = self.head()[ 9:12 ]
 
-    if self.args( 'Transfer-Encoding' ) == 'chunked':
+    if status in ( '412', '416' ) and self.partial(): # TODO: check 412
+ 
+      print 'Partial file changed, requesting complete file'
+
+      self.remove()
+      self.__init__( self.__request )
+ 
+    elif self.args( 'Transfer-Encoding' ) == 'chunked':
 
       print 'Chunked data; not cached'
       self.Response = Response.BasicResponse
@@ -91,13 +119,6 @@ class HttpProtocol( Util.Cache, Util.Http ):
       self.__socket.close()
       self.open()
 
-    elif status in ( '412', '416' ) and self.partial(): # TODO: check!
- 
-      print 'Partial file changed, requesting complete file'
-
-      self.remove()
-      self.__init__( self, self.__client )
- 
     else:
 
       print 'Forwarding response unchanged'
@@ -113,7 +134,7 @@ class HttpProtocol( Util.Cache, Util.Http ):
 
   def canjoin( self ):
 
-    return False
+    return True
 
     # TODO: fix re-enable joined downloads
 

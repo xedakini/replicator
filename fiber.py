@@ -1,24 +1,6 @@
 import sys, os, select, time, socket, traceback
 
 
-class InfType:
-
-  def __gt__( self, other ):
-
-    return True
-
-  def __lt__( self, other ):
-
-    return False
-
-  def __radd__( self, other ):
-
-    return self
-
-
-Inf = InfType()
-
-
 class SEND:
 
   def __init__( self, sock ):
@@ -37,17 +19,16 @@ class RECV:
 
 class WAIT:
 
-  def __init__( self, timeout = Inf ):
+  def __init__( self, timeout = None ):
 
-    assert timeout.__class__ in ( int, float, InfType ), 'invalid WAIT argument %r' % timeout
+    assert timeout is None or timeout.__class__ in ( int, float, NoneType ), 'invalid WAIT argument %r' % timeout
     self.timeout = timeout
 
 
 class Fiber:
 
-  expire = None
-  fileno = None
   write = sys.stdout.write
+  writelines = sys.stdout.writelines
   softspace = 0
 
   def __init__( self, generator, timeout ):
@@ -55,28 +36,30 @@ class Fiber:
     self.__generator = generator
     self.__timeout = timeout
 
-  def step( self, waitqueue, recvqueue, sendqueue ):
+    self.state = WAIT
+    self.expire = None
+    self.fileno = None
+
+  def step( self ):
 
     try:
       stdout = sys.stdout
       sys.stdout = self
       state = self.__generator.next()
+      self.state = state.__class__
+      assert self.state in ( SEND, RECV, WAIT ), 'invalid command %r' % cmd
     finally:
       sys.stdout = stdout
 
-    if state.__class__ == WAIT:
-      self.expire = time.time() + state.timeout
-      waitqueue.append( self )
-    elif state.__class__ == SEND:
-      self.expire = time.time() + self.__timeout
-      self.fileno = state.sock.fileno
-      sendqueue.append( self )
-    elif state.__class__ == RECV:
-      self.expire = time.time() + self.__timeout
-      self.fileno = state.sock.fileno
-      recvqueue.append( self )
+    if self.state is WAIT:
+      if state.timeout is None:
+        self.expire = None
+      else:
+        self.expire = time.time() + state.timeout
+      self.fileno = None
     else:
-      raise AssertionError, 'invalid command %r' % cmd
+      self.expire = time.time() + self.__timeout
+      self.fileno = state.sock.fileno()
 
   def __del__( self ):
 
@@ -94,24 +77,25 @@ class GatherFiber( Fiber ):
 
     Fiber.__init__( self, generator, timeout )
 
-    self.__lines = []
+    self.__lines = [ time.ctime() + '\n' ]
     self.__buffer = ''
+    self.__start = time.time()
 
   def write( self, string ):
 
     self.__buffer += string
     if self.softspace:
-      self.__lines.append( time.strftime( '%H:%M:%S ' ) + self.__buffer )
+      self.__lines.append( '%6.2f  %s' % ( time.time() - self.__start, self.__buffer ) )
       self.__buffer = ''
 
-  def step( self, *args ):
+  def step( self ):
 
     try:
-      Fiber.step( self, *args )
+      Fiber.step( self )
     except KeyboardInterrupt:
       raise
     except StopIteration:
-      pass
+      self.state = None
     except AssertionError, msg:
       print >> self, 'Error:', msg
     except:
@@ -124,9 +108,7 @@ class GatherFiber( Fiber ):
     except:
       print >> self, ''.join( traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback ) ).rstrip()
 
-    for line in self.__lines:
-      Fiber.write( line )
-    Fiber.write( '\n' )
+    Fiber.writelines( self.__lines )
 
 
 class DebugFiber( Fiber ):
@@ -135,7 +117,7 @@ class DebugFiber( Fiber ):
 
     Fiber.__init__( self, generator, timeout )
 
-    self.__id = '%s : ' % id( generator )
+    self.__id = ' %s  ' % id( generator )
     self.__frame = generator.gi_frame
     self.__newline = True
 
@@ -149,13 +131,14 @@ class DebugFiber( Fiber ):
     Fiber.write( string )
     self.__newline = self.softspace
 
-  def step( self, *args ):
+  def step( self ):
 
     try:
       enter = self.__frame.f_lineno
-      Fiber.step( self, *args )
+      Fiber.step( self )
       leave = self.__frame.f_lineno
     except StopIteration:
+      self.state = None
       print >> self, 'Done'
     else:
       print >> self, '%i -> %i' % ( enter, leave )
@@ -182,61 +165,54 @@ def spawn( generator, port, timeout, debug ):
 
   try:
 
-    waitqueue = []
-    recvqueue = [ listener ]
-    sendqueue = []
+    fibers = []
 
     while True:
 
-      expire = Inf
+      tryrecv = { listener.fileno(): None }
+      trysend = {}
+      expire = None
 
-      for i in range( len( waitqueue ) -1, -1, -1 ):
-        if waitqueue[ i ].expire is Inf or waitqueue[ i ].expire < time.time():
-          waitqueue[ i ].step( waitqueue, recvqueue, sendqueue )
-          del waitqueue[ i ]
-        else:
-          expire = min( expire, waitqueue[ i ].expire )
+      for i in range( len( fibers ) -1, -1, -1 ):
 
-      while len( recvqueue ) > 1:
-        if recvqueue[ 1 ].expire < time.time():
-          print >> recvqueue[ 1 ], 'Timed out'
-          del recvqueue[ 1 ]
-        else:
-          expire = min( expire, recvqueue[ 1 ].expire )
-          break
+        if fibers[ i ].state is None:
+          del fibers[ i ]
+          continue
 
-      while len( sendqueue ) > 0:
-        if sendqueue[ 0 ].expire < time.time():
-          print >> sendqueue[ 0 ], 'Timed out'
-          del sendqueue[ 0 ]
-        else:
-          expire = min( expire, sendqueue[ 0 ].expire )
-          break
+        if fibers[ i ].expire < time.time():
+          if fibers[ i ].state is WAIT:
+            fibers[ i ].step()
+          else:
+            print >> fibers[ i ], 'Timed out'
+            del fibers[ i ]
+            continue
 
-      if expire is Inf:
-        print time.strftime( '%D' ), 'Idle'
+        if fibers[ i ].state is RECV:
+          tryrecv[ fibers[ i ].fileno ] = fibers[ i ]
+        elif fibers[ i ].state is SEND:
+          trysend[ fibers[ i ].fileno ] = fibers[ i ]
+        
+        if not expire:
+          expire = fibers[ i ].expire
+        elif fibers[ i ].expire:
+          expire = min( expire, fibers[ i ].expire )
+
+      if expire is None:
+        print '[ IDLE ]'
         sys.stdout.flush()
-        canrecv, cansend, dummy = select.select( recvqueue, sendqueue, [] )
-        print time.strftime( '%D' ), 'Busy'
+        canrecv, cansend, dummy = select.select( tryrecv, trysend, [] )
+        print '[ BUSY ]'
         sys.stdout.flush()
-        print
       else:
-        canrecv, cansend, dummy = select.select( recvqueue, sendqueue, [], expire - time.time() )
+        canrecv, cansend, dummy = select.select( tryrecv, trysend, [], expire - time.time() )
 
-      for fiber in canrecv:
-        if fiber is listener:
-          waitqueue.append( myFiber( generator( *listener.accept() ), timeout ) )
+      for fileno in canrecv:
+        if fileno is listener.fileno():
+          fibers.append( myFiber( generator( *listener.accept() ), timeout ) )
         else:
-          recvqueue.remove( fiber )
-          fiber.step( waitqueue, recvqueue, sendqueue )
-          del fiber
-
-      for fiber in cansend:
-        sendqueue.remove( fiber )
-        fiber.step( waitqueue, recvqueue, sendqueue )
-        del fiber
-
-      del canrecv, cansend, dummy
+          tryrecv[ fileno ].step()
+      for fileno in cansend:
+        trysend[ fileno ].step()
 
   except KeyboardInterrupt:
     print time.strftime( '%D' ), 'HTTP Replicator terminated'
