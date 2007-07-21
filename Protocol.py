@@ -1,237 +1,76 @@
-import Params, Response, os, sys, time, socket
+import Params, Response, Util, time, socket
 
 
-class BlindHttpProtocol:
-
-  Response = None
-
-  def __init__( self, request ):
-
-    print 'Using blind protocol'
-
-    head = request.gethead()
-    args = request.getargs()
-    body = request.getbody()
-
-    self.__strbuf = '\r\n'.join( [ ' '.join( head ) ] + map( ': '.join, args.items() ) + [ '', body ] )
-    self.__socket = request.getsocket()
-
-  def send( self, sock ):
-
-    assert not self.Response, 'send called after protocol is done'
-
-    bytes = sock.send( self.__strbuf )
-    self.__strbuf = self.__strbuf[ bytes: ]
-    if not self.__strbuf:
-      self.Response = Response.BlindResponse
-
-  def getsocket( self ):
-
-    return self.__socket
-
-  def canjoin( self ):
-
-    return False
-
-  def cansend( self ):
-
-    assert not self.Response, 'cansend called after protocol is done'
-
-    return True
-
-
-class Cache:
-
-  def __init__( self, request ):
-
-    path = request.getargs( 'Host' ) + request.gethead( 1 )
-    sep = path.find( '?' )
-    if sep != -1:
-      path = path[ :sep ] + path[ sep: ].replace( '/', '%2F' )
-
-    if Params.VERBOSE > 1:
-      print 'Cache position:', path
-
-    self.__file = None
-    self.__path = Params.ROOT + path
-    self.__partial = os.path.isfile( self.__path + Params.SUFFIX )
-    self.__complete = not self.__partial and os.path.isfile( self.__path )
-
-    if self.__partial or self.__complete:
-      stat = os.stat( self.__partial and self.__path + Params.SUFFIX or self.__path )
-      self.__size = stat.st_size
-      self.__mtime = stat.st_mtime
-      print self.__partial and 'Partial' or 'Complete', 'file in cache since', time.ctime( self.__mtime )
-
-    # TODO: unknown file name
-
-  def complete( self ):
-
-    assert self.__file is None, 'complete called after file is opened'
-
-    return self.__complete
-
-  def partial( self ):
-
-    assert self.__file is None, 'partial called after file is opened'
-
-    return self.__partial
-
-  def getmtime( self ):
-
-    assert self.__file is None, 'getmtime called after file is opened'
-
-    return self.__mtime
-
-  def getsize( self ):
-
-    return self.__size
-
-  def getfile( self ):
-
-    assert self.__file is not None, 'getfile called before file is opened'
-
-    return self.__file
-
-  def open( self, size = None, offset = None ):
-
-    assert self.__file is None, 'open called twice'
-
-    if offset is not None:
-      assert self.__partial
-      print 'Continuing previous download from byte', offset
-      self.__file = open( self.__path + Params.SUFFIX, 'a+' )
-      self.__file.seek( 0, 2 )
-      assert offset <= self.__file.tell() < size, 'range does not match file in cache'
-      self.__file.seek( offset )
-      self.__file.truncate()
-      self.__size = size
-    elif size is not None:
-      print 'Starting new download'
-      self.__partial = True
-      self.__makedirs( self.__path )
-      self.__file = open( self.__path + Params.SUFFIX, 'w+' )
-      self.__size = size
-    else:
-      print 'Serving file from cache'
-      assert self.__complete
-      self.__file = open( self.__path, 'r' )
-      self.__file.seek( 0, 2 )
-      assert self.__size == self.__file.tell(), 'file size changed mysteriously'
-
-  def __makedirs( self, path ):
-
-    dir = os.path.dirname( path )
-    if dir and not os.path.isdir( dir ):
-      if os.path.isfile( dir ):
-        print 'directory %s mistaken for file' % dir
-        os.remove( dir )
-      else:
-        self.__makedirs( dir )
-      os.mkdir( dir )
-
-  def __finalize( self ):
-
-    if not self.__partial or self.__file is None:
-      return
-
-    self.__file.seek( 0, 2 )
-    size = self.__file.tell()
-    self.__file.close()
-
-    if size != self.__size:
-      print 'Wrong file size; removing file from cache'
-      os.remove( self.__path + Params.SUFFIX )
-      return
-
-    print 'Finalizing', self.__path
-    os.rename( self.__path + Params.SUFFIX, self.__path )
-
-  def __del__( self ):
-
-    try:
-      self.__finalize()
-    except:
-      print 'Finalize error:', sys.exc_value or sys.exc_type
-
-
-class HttpProtocol( Cache ):
+class HttpProtocol( Util.Cache, Util.Http ):
 
   Response = None
 
   def __init__( self, request ):
 
-    Cache.__init__( self, request )
+    Util.Cache.__init__( self, request )
+    Util.Http.__init__( self )
 
-    if Params.STATIC and self.complete():
-      self.__socket = None
+    if Params.STATIC and self.incache():
+
+      self.Response = Response.DataResponse
       self.open()
-      self.Response = Response.CacheResponse
       return
 
-    head = request.gethead()
-    args = request.getargs()
-
-    if self.complete():
-      args[ 'If-Modified-Since' ] = time.strftime( Params.TIMEFMT, time.gmtime( self.getmtime() ) )
+    head = '%s %s HTTP/1.1' % ( request.cmd(), request.path() )
+    args = request.args()
+    args[ 'Host' ] = request.addr()[ 0 ]
+    args[ 'Connection' ] = 'close'
+    args[ 'Date' ] = time.strftime( Params.TIMEFMT, time.gmtime() )
+    args.pop( 'Keep-Alive', None )
+    args.pop( 'Accept-Encoding', None )
+    args.pop( 'Proxy-Connection', None )
+    args.pop( 'Proxy-Authorization', None )
+    if self.incache():
+      print 'Checking if cache is up to date'
+      args[ 'If-Modified-Since' ] = time.strftime( Params.TIMEFMT, time.gmtime( self.mtime() ) )
     elif self.partial():
-      args[ 'If-Unmodified-Since' ] = time.strftime( Params.TIMEFMT, time.gmtime( self.getmtime() ) )
-      args[ 'Range' ] = 'bytes=%i-' % self.getsize()
+      print 'Resuming partial file'
+      args[ 'If-Unmodified-Since' ] = time.strftime( Params.TIMEFMT, time.gmtime( self.mtime() ) )
+      args[ 'Range' ] = 'bytes=%i-' % self.size()
 
-    if Params.VERBOSE > 1:
-      print '\n > '.join( [ 'Sending to server:', ' '.join( head ) ] + map( ': '.join, args.items() ) )
-
-    self.__strbuf = '\r\n'.join( [ ' '.join( head ) ] + map( ': '.join, args.items() ) + [ '', '' ] )
+    self.__strbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', request.body() ] )
     self.__request = request
-    self.__socket = request.getsocket()
+    self.__socket = request.connect()
 
   def send( self, sock ):
 
-    assert self.cansend(), 'send called while no data to send'
+    assert self.cansend()
 
     bytes = sock.send( self.__strbuf )
     self.__strbuf = self.__strbuf[ bytes: ]
 
   def recv( self, sock ):
 
-    assert not self.cansend(), 'recv called while still data to send'
+    assert not self.cansend()
 
-    lines = sock.recv( Params.MAXCHUNK, socket.MSG_PEEK ).splitlines( True )
-    headlen = len( lines[ 0 ] )
-    head = lines.pop( 0 ).split()
-    args = {}
-    for line in lines:
-      headlen += len( line )
-      if line == '\r' or line == '\r\n':
-        break
-      elif ':' in line:
-        key, value = line.split( ':', 1 )
-        args[ key.title() ] = value.strip()
-      else:
-        print 'Ignored invalid header line %r' % line
-    else:
+    if not self.recvhead( sock ):
       return
 
-    if Params.VERBOSE > 1:
-      print '\n > '.join( [ 'Received from server:', ' '.join( head ) ] + map( ': '.join, args.items() ) )
+    status = self.head()[ 9:12 ]
 
-    if args.get( 'Transfer-Encoding' ) == 'chunked':
+    if self.args( 'Transfer-Encoding' ) == 'chunked':
 
       print 'Chunked data; not cached'
+      self.Response = Response.BasicResponse
 
-      self.Response = Response.BlindResponse
+    elif status == '200' and self.cachable():
 
-    elif head[ 1 ] == '200':
+      print 'Server sends a complete file'
+      self.Response = Response.DataResponse
 
-      size = int( args.get( 'Content-Length', -1 ) )
-      self.__socket.recv( headlen )
+      size = int( self.args( 'Content-Length' ) or -1 )
       self.open( size )
-      self.Response = Response.CacheResponse
 
-    elif head[ 1 ] == '206' and self.partial():
+    elif status == '206' and self.partial():
 
-      range = args[ 'Content-Range' ]
-      assert range.startswith( 'bytes ' ), 'invalid content-range'
+      range = self.args( 'Content-Range' )
+      assert range, 'invalid 206 response: no content-range specified'
+      assert range.startswith( 'bytes ' ), 'invalid content-range %r' % range
       range, size = range[ 6: ].split( '/' )
       beg, end = range.split( '-' )
       size = int( size )
@@ -239,37 +78,32 @@ class HttpProtocol( Cache ):
       end = int( end )
       assert size == end + 1
 
-      self.__socket.recv( headlen )
-      self.open( size, beg )
-      self.Response = Response.CacheResponse
+      print 'Server resumes transfer from byte', beg
+      self.Response = Response.DataResponse
 
-    elif head[ 1 ] == '304' and self.complete():
+      self.open( size, beg )
+
+    elif status == '304' and self.incache():
+
+      print 'Cache is up to date'
+      self.Response = Response.DataResponse
 
       self.__socket.close()
       self.open()
-      self.Response = Response.CacheResponse
 
-    elif head[ 1 ] == '412':
+    elif status in ( '412', '416' ) and self.partial(): # TODO: check!
  
-      print 'File has changed, resending request for complete file'
+      print 'Partial file changed, requesting complete file'
 
-      head_ = request.gethead()
-      args_ = request.getargs()
-
-      head_.pop( 'Range', None )
-      head_.pop( 'If-Unmodified-Since', None )
-
-      if Params.VERBOSE > 1:
-        print '\n > '.join( [ 'Sending to server:', ' '.join( head_ ) ] + map( ': '.join, args_.items() ) )
-
-      self.__strbuf = '\r\n'.join( [ ' '.join( head_ ) ] + map( ': '.join, args_.items() ) + [ '', '' ] )
-      self.__socket = self.__request.getsocket()
+      self.remove()
+      self.__init__( self, self.__client )
  
     else:
 
-      self.Response = Response.BlindResponse
+      print 'Forwarding response unchanged'
+      self.Response = Response.BasicResponse
 
-  def getsocket( self ):
+  def socket( self ):
 
     return self.__socket
 
@@ -284,7 +118,7 @@ class HttpProtocol( Cache ):
     # TODO: fix re-enable joined downloads
 
 
-class FtpProtocol( Cache ):
+class FtpProtocol( Util.Cache ):
 
   # NOTE: in current state completely broken
 
@@ -292,9 +126,9 @@ class FtpProtocol( Cache ):
 
   def __init__( self, request ):
 
-    Cache.__init__( self, request )
+    Util.Cache.__init__( self, request )
 
-    self.__socket = request.getsocket()
+    self.__socket = request.connect()
     self.__strbuf = ''
 
   def send( self, sock ):
@@ -386,7 +220,7 @@ class FtpProtocol( Cache ):
     self.Response = StreamBuffer
     self.__socket = self.__datasocket
 
-  def getsocket( self ):
+  def socket( self ):
 
     return self.__socket
 

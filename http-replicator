@@ -29,8 +29,8 @@ def transaction( client, address ):
       yield fiber.WAIT()
     else:
       protocol = DOWNLOADS[ request ] = request.Protocol( request )
-      server = protocol.getsocket()
       while not protocol.Response:
+        server = protocol.socket()
         if protocol.cansend():
           yield fiber.SEND( server )
           protocol.send( server )
@@ -39,20 +39,18 @@ def transaction( client, address ):
           protocol.recv( server )
 
     response = protocol.Response( protocol, request )
-    server = protocol.getsocket()
   except:
     response = Response.ExceptionResponse()
-    server = None
 
   while not response.Done:
     if response.cansend():
       yield fiber.SEND( client )
       response.send( client )
     elif response.canrecv():
+      server = protocol.socket()
       yield fiber.RECV( server )
       response.recv( server )
     else:
       yield fiber.WAIT( .5 )
-
 
 fiber.spawn( transaction, Params.PORT, Params.TIMEOUT, Params.DEBUG )

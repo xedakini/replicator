@@ -1,132 +1,106 @@
-import Params, Protocol, os, time, socket
+import Params, Protocol, Util, socket
 
 
-class HttpRequest:
+class HttpRequest( Util.Http ):
 
   Protocol = None
 
   def __init__( self ):
 
+    Util.Http.__init__( self )
+
     self.__body = ''
     self.__size = -1
-    self.__head = None
-    self.__args = {}
 
   def recv( self, sock ):
 
-    assert not self.Protocol, 'recv called after request is done'
-
-    chunk = sock.recv( Params.MAXCHUNK )
-    assert chunk, 'client connection closed before sending a complete header'
-    self.__body += chunk
+    assert not self.Protocol
 
     if self.__size == -1:
-      while '\n' in self.__body:
-        line, self.__body = self.__body.split( '\n', 1 )
-        if line == '\r' or line == '\r\n':
-          break
-        elif not self.__head:
-          self.__head = line.split()
-          assert len( self.__head ) == 3, 'invalid head %r' % line
-        elif ':' in line:
-          key, value = line.split( ':', 1 )
-          self.__args[ key.title() ] = value.strip()
-        else:
-          print 'Ignored invalid header line %r' % line
-      else:
+
+      if not self.recvhead( sock ):
         return
-      if Params.VERBOSE > 1:
-        print '\n > '.join( [ 'Received from client:', ' '.join( self.__head ) ] + map( ': '.join, self.__args.items() ) )
-      self.__size = int( self.__args.get( 'Content-Length', 0 ) )
-      if self.__head[ 0 ] != 'POST':
-        assert not self.__size, '%s request has message body' % self.__head[ 0 ]
 
-    if len( self.__body ) < self.__size:
-      return
+      head = self.head().split()
+      assert len( head ) == 3, 'invalid header line'
+      self.__cmd, self.__path, dummy = head
+      self.__size = int( self.args( 'Content-Length' ) or 0 )
+      if self.__cmd != 'POST':
+        assert not self.__size, '%s request has message body' % self.__cmd
+      elif self.__size > 0:
+        return
 
-    assert len( self.__body ) == self.__size, 'request body exceeds content-length'
+    else:
+        
+      chunk = sock.recv( Params.MAXCHUNK )
+      assert chunk, 'connection closed before sending a complete message body'
+      self.__body += chunk
+      if len( self.__body ) < self.__size:
+        return
 
-    url = self.__head[ 1 ]
-    if url.startswith( 'http://' ):
-      url = url[ 7: ]
-      if self.__head[ 0 ] == 'GET':
-        self.Protocol = Protocol.HttpProtocol
-      else:
-        self.Protocol = Protocol.BlindHttpProtocol
-      port = 80
-    elif url.startswith( 'ftp://' ):
-      url = url[ 6: ]
-      assert self.__head[ 0 ] == 'GET', 'unsupported ftp operation: %s' % self.__head[ 0 ]
+    assert len( self.__body ) == self.__size, 'message body exceeds content-length'
+
+    if self.__path.startswith( 'http://' ):
+      self.Protocol = Protocol.HttpProtocol
+      self.__path = self.__path[ 7: ]
+      self.__port = 80
+    elif self.__path.startswith( 'ftp://' ):
       self.Protocol = Protocol.FtpProtocol
-      port = 21
+      self.__path = self.__path[ 6: ]
+      self.__port = 21
     else:
       raise AssertionError, 'invalid url: %s' % url
 
-    sep = url.find( '/' )
+    sep = self.__path.find( '/' )
     if sep == -1:
-      url += '/'
-    host, url = url[ :sep ], url[ sep: ]
-    sep = host.find( ':' )
+      self.__path += '/'
+    self.__host, self.__path = self.__path[ :sep ], self.__path[ sep: ]
+
+    sep = self.__host.find( ':' )
     if sep != -1:
-      host, port = host[ :sep ], int( host[ sep+1: ] )
+      self.__host, self.__port = host[ :sep ], int( host[ sep+1: ] )
 
-    self.__addr = host, port
-    self.__head[ 1 ] = url
-    self.__head[ 2 ] = 'HTTP/1.1'
-    self.__args[ 'Host' ] = '%s:%i' % self.__addr
-    self.__args[ 'Connection' ] = 'close'
-    self.__args[ 'Date' ] = time.strftime( Params.TIMEFMT, time.gmtime() )
-    self.__args.pop( 'Keep-Alive', None )
-    self.__args.pop( 'Accept-Encoding', None )
-    self.__args.pop( 'Proxy-Connection', None )
-    self.__args.pop( 'Proxy-Authorization', None )
+  def body( self ):
 
-  def __hash__( self ):
-
-    assert self.Protocol, '__hash__ called before request is done'
-
-    return hash( self.__head[ 1 ] )
-
-  def __eq__( self, other ):
-
-    assert self.Protocol, '__eq__ called before request is done'
-
-    return self.__addr == other.__addr and self.__head == other.__head
-
-  def gethead( self, index = None ):
-
-    assert self.Protocol, 'gethead called before request is done'
-
-    if index is not None:
-      return self.__head[ index ]
-
-    return self.__head[ : ]
-
-  def getargs( self, key = None ):
-
-    assert self.Protocol, 'getargs called before request is done'
-
-    if key is not None:
-      return self.__args.get( key )
-
-    return self.__args.copy()
-
-  def getbody( self ):
-
-    assert self.Protocol, 'getbody called before request is done'
-
+    assert self.Protocol
     return self.__body
 
-  def getsocket( self ):
+  def addr( self ):
 
-    assert self.Protocol, 'getsocket called before request is done'
+    assert self.Protocol
+    return self.__host, self.__port
 
-    addrinfo = socket.getaddrinfo( self.__addr[ 0 ], self.__addr[ 1 ], Params.FAMILY, socket.SOCK_STREAM )
+  def cmd( self ):
+
+    assert self.Protocol
+    return self.__cmd
+
+  def path( self ):
+
+    assert self.Protocol
+    return self.__path
+
+  def connect( self ):
+
+    assert self.Protocol
+
+    addrinfo = socket.getaddrinfo( self.__host, self.__port, Params.FAMILY, socket.SOCK_STREAM )
     family, socktype, proto, canonname, sockaddr = addrinfo[ 0 ]
+
+    print 'Connecting to', self.__host, '(%s:%i)' % sockaddr
+
     sock = socket.socket( family, socktype, proto )
     sock.setblocking( 0 )
     sock.connect_ex( sockaddr )
 
-    print 'Connecting to', self.__addr[ 0 ], '(%s:%i)' % sockaddr
-
     return sock
+
+  def __hash__( self ):
+
+    assert self.Protocol
+    return hash( self.__path )
+
+  def __eq__( self, other ):
+
+    assert self.Protocol
+    return ( self.__cmd, self.__host, self.__port, self.__path ) == ( other.__cmd, other.__host, other.__port, other.__path )

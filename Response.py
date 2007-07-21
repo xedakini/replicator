@@ -1,32 +1,25 @@
 import Params, time, sys, traceback
 
 
-class BlindResponse:
+class BasicResponse:
 
   Done = False
 
   def __init__( self, protocol, request ):
 
-    print 'Sending unmodified response'
-
-    self.__strbuf = ''
-    self.__closed = False
+    self.__strbuf = '\r\n'.join( [ protocol.head() ] + map( ': '.join, protocol.args().items() ) + [ '', '' ] )
 
   def send( self, sock ):
 
     bytes = sock.send( self.__strbuf )
     self.__strbuf = self.__strbuf[ bytes: ]
-    if self.__closed and not self.__strbuf:
-      self.Done = True
 
   def recv( self, sock ):
 
     chunk = sock.recv( Params.MAXCHUNK )
     if chunk:
       self.__strbuf += chunk
-    elif self.__strbuf:
-      self.__closed = True
-    else:
+    elif not self.__strbuf:
       self.Done = True
 
   def cansend( self ):
@@ -38,14 +31,16 @@ class BlindResponse:
     return True
 
 
-class CacheResponse:
+class DataResponse:
 
   Done = False
 
   def __init__( self, protocol, request ):
 
-    size = protocol.getsize()
-    range = request.getargs( 'Range' )
+    args = protocol.args()
+    size = protocol.size()
+
+    range = request.args( 'Range' )
     if range:
       assert range.startswith( 'bytes=' )
       sep = range.find( '-', 6 )
@@ -64,30 +59,33 @@ class CacheResponse:
       self.__end = size
 
     if self.__pos == 0 and self.__end == size:
-      lines = [ 'HTTP/1.1 200 OK' ]
+      head = 'HTTP/1.1 200 OK'
       if size >= 0:
-        lines.append( 'Content-Length: %i' % size )
+        args[ 'Content-Length' ] = str( size )
     elif 0 <= self.__pos <= self.__end <= size:
-      lines = [ 'HTTP/1.1 206 Partial Content' ]
-      lines.append( 'Content-Range: bytes %i-%i/%i' % ( self.__pos, self.__end - 1, size ) )
-      lines.append( 'Content-Length: %i' % ( self.__end - self.__pos ) )
+      head = 'HTTP/1.1 206 Partial Content'
+      args[ 'Content-Range' ] = 'bytes %i-%i/%i' % ( self.__pos, self.__end - 1, size )
+      args[ 'Content-Length' ] = str( self.__end - self.__pos )
     else:
-      lines = [ 'HTTP/1.1 416 Requested Range Not Satisfiable' ]
+      head = 'HTTP/1.1 416 Requested Range Not Satisfiable'
       if size >= 0:
-        lines.append( 'Content-Range: bytes */%i' % size )
+        args[ 'Content-Range' ] = 'bytes */%i' % size
       else:
-        lines.append( 'Content-Range: bytes */*' )
-      lines.append( 'Content-Length: 0' )
+        args[ 'Content-Range' ] = 'bytes */*'
+      args[ 'Content-Length' ] = '0'
       self.__pos = self.__end = 0
 
-    lines.append( 'Connection: close' )
-    lines.append( 'Date: %s' % time.strftime( Params.TIMEFMT, time.gmtime() ) )
+    args[ 'Connection' ] = 'close'
+    args[ 'Date' ] = time.strftime( Params.TIMEFMT, time.gmtime() )
 
-    if Params.VERBOSE > 1:
-      print '\n > '.join( [ 'Sending to client:' ] + lines )
+    if Params.VERBOSE > 0:
+      print 'Sending', head
+      if Params.VERBOSE > 1:
+        for item in args.items():
+          print '<', ': '.join( item )
 
-    self.__strbuf = '\r\n'.join( lines + [ '', '' ] )
-    self.__file = protocol.getfile()
+    self.__strbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
+    self.__file = protocol.file()
 
   def send( self, sock ):
 
