@@ -99,7 +99,8 @@ class DataResponse:
         bytes = self.__end - self.__pos
       chunk = self.__file.read( bytes )
       self.__pos += sock.send( chunk )
-      self.Done = ( self.__pos >= self.__end )
+
+    self.Done = self.__pos >= self.__end >= 0
 
   def recv( self, sock ):
 
@@ -107,12 +108,10 @@ class DataResponse:
     self.__file.seek( 0, 2 )
     if chunk:
       self.__file.write( chunk )
-    else:
-      if self.__end == -1:
-        self.__end = self.__file.tell()
-      else:
-        assert self.__end == self.__file.tell(), 'connection closed too early'
-      self.Done = ( self.__pos >= self.__end )
+    elif self.__end == -1:
+      self.__end = self.__file.tell()
+
+    self.Done = self.__pos >= self.__end >= 0
 
   def cansend( self ):
 
