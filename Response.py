@@ -7,24 +7,24 @@ class BasicResponse:
 
   def __init__( self, protocol, request ):
 
-    self.__strbuf = '\r\n'.join( [ protocol.head() ] + map( ': '.join, protocol.args().items() ) + [ '', '' ] )
+    self.__sendbuf = '\r\n'.join( [ protocol.head() ] + map( ': '.join, protocol.args().items() ) + [ '', '' ] )
 
   def send( self, sock ):
 
-    bytes = sock.send( self.__strbuf )
-    self.__strbuf = self.__strbuf[ bytes: ]
+    bytes = sock.send( self.__sendbuf )
+    self.__sendbuf = self.__sendbuf[ bytes: ]
 
   def recv( self, sock ):
 
     chunk = sock.recv( Params.MAXCHUNK )
     if chunk:
-      self.__strbuf += chunk
-    elif not self.__strbuf:
+      self.__sendbuf += chunk
+    elif not self.__sendbuf:
       self.Done = True
 
   def cansend( self ):
 
-    return bool( self.__strbuf )
+    return bool( self.__sendbuf )
 
   def canrecv( self ):
 
@@ -78,20 +78,27 @@ class DataResponse:
     args[ 'Connection' ] = 'close'
     args[ 'Date' ] = time.strftime( Params.TIMEFMT, time.gmtime() )
 
+    if args.pop( 'Transfer-Encoding', None ) == 'chunked':
+      print 'Parsing chunked data'
+      self.__chunked = True
+      self.__recvbuf = ''
+    else:
+      self.__chunked = False
+
     if Params.VERBOSE > 0:
       print 'Sending', head
       if Params.VERBOSE > 1:
         for item in args.items():
           print '<', ': '.join( item )
 
-    self.__strbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
+    self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
     self.__file = protocol.file()
 
   def send( self, sock ):
 
-    if self.__strbuf:
-      bytes = sock.send( self.__strbuf )
-      self.__strbuf = self.__strbuf[ bytes: ]
+    if self.__sendbuf:
+      bytes = sock.send( self.__sendbuf )
+      self.__sendbuf = self.__sendbuf[ bytes: ]
     else:
       self.__file.seek( self.__pos )
       bytes = Params.MAXCHUNK
@@ -105,17 +112,40 @@ class DataResponse:
   def recv( self, sock ):
 
     chunk = sock.recv( Params.MAXCHUNK )
+
+    if self.__chunked:
+
+      self.__recvbuf += chunk
+
+      headsize = self.__recvbuf.find( '\r\n' )
+      if headsize == -1:
+        assert chunk, 'chunked data error: connection closed awaiting head'
+        return
+
+      datasize = int( self.__recvbuf[ :headsize ].split( ';' )[ 0 ], 16 )
+      if len( self.__recvbuf ) < headsize + 2 + datasize + 2:
+        assert chunk, 'chunked data error: connection closed awaiting data'
+        return
+
+      assert self.__recvbuf[ : headsize + 2 + datasize + 2 ].endswith( '\r\n' ), 'chunked data error: chunk does not match announced size'
+      if Params.VERBOSE:
+        print 'Received', datasize, 'byte chunk'
+
+      chunk = self.__recvbuf[ headsize + 2 : headsize + 2 + datasize ]
+      self.__recvbuf = self.__recvbuf[ headsize + 2 + datasize + 2 : ]
+
     self.__file.seek( 0, 2 )
     if chunk:
       self.__file.write( chunk )
     elif self.__end == -1:
       self.__end = self.__file.tell()
+      print 'Connection closed; assuming file size', self.__end
 
     self.Done = self.__pos >= self.__end >= 0
 
   def cansend( self ):
 
-    if self.__strbuf:
+    if self.__sendbuf:
       return True
 
     self.__file.seek( 0, 2 )
@@ -132,18 +162,18 @@ class NotFoundResponse:
 
   def __init__( self, protocol, request ):
 
-    self.__strbuf = 'HTTP/1.1 404 Not Found\r\n\r\n'
+    self.__sendbuf = 'HTTP/1.1 404 Not Found\r\n\r\n'
 
   def send( self, sock ):
 
-    bytes = sock.send( self.__strbuf )
-    self.__strbuf = self.__strbuf[ bytes: ]
-    if not self.__strbuf:
+    bytes = sock.send( self.__sendbuf )
+    self.__sendbuf = self.__sendbuf[ bytes: ]
+    if not self.__sendbuf:
       self.Done = True
 
   def cansend( self ):
 
-    return bool( self.__strbuf )
+    return bool( self.__sendbuf )
 
 
 class ExceptionResponse:
@@ -155,17 +185,17 @@ class ExceptionResponse:
     head = 'HTTP/1.1 500 Internal Server Error\r\n\r\n'
     body = traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback )
 
-    self.__strbuf = head + '\n'.join( body )
+    self.__sendbuf = head + '\n'.join( body )
 
     print ''.join( traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback ) ).rstrip()
 
   def send( self, sock ):
 
-    bytes = sock.send( self.__strbuf )
-    self.__strbuf = self.__strbuf[ bytes: ]
-    if not self.__strbuf:
+    bytes = sock.send( self.__sendbuf )
+    self.__sendbuf = self.__sendbuf[ bytes: ]
+    if not self.__sendbuf:
       self.Done = True
 
   def cansend( self ):
 
-    return bool( self.__strbuf )
+    return bool( self.__sendbuf )

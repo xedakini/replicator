@@ -25,13 +25,17 @@ class Http:
 
       if not self.__head:
         self.__head = line.rstrip()
-        if Params.VERBOSE:
-          print 'Received', self.__head
+        print 'Received', self.__head
       elif ':' in line:
         if Params.VERBOSE > 1:
           print '>', line.rstrip()
         key, value = line.split( ':', 1 )
-        self.__args[ key.title() ] = value.strip()
+        if key.title() in self.__args:
+          self.__args[ key.title() ] += '\r\n' + key.title() + ': ' +  value.strip()
+          if Params.VERBOSE:
+            print 'Merged', key, 'values'
+        else:
+          self.__args[ key.title() ] = value.strip()
       else:
         print 'Ignored:', line.rstrip()
 
@@ -191,8 +195,8 @@ class Cache:
     size = self.__file.tell()
     self.__file.close()
 
-    if size != self.__size:
-      print 'Wrong file size; leaving partial file in cache'
+    if size != self.__size and self.__size != -1:
+      print 'Wrong file size %i; leaving partial file in cache' % size
       return
 
     print 'Finalizing', self.__path

@@ -81,15 +81,10 @@ class HttpProtocol( Util.Cache, Util.Http ):
       self.remove()
       self.__init__( self.__request )
  
-    elif self.args( 'Transfer-Encoding' ) == 'chunked':
-
-      print 'Chunked data; not cached'
-      self.Response = Response.BasicResponse
-
     elif status == '200' and self.cachable():
 
-      print 'Server sends a complete file'
       self.Response = Response.DataResponse
+      print 'Server sends a complete file'
 
       size = int( self.args( 'Content-Length' ) or -1 )
       self.open( size )
@@ -106,8 +101,8 @@ class HttpProtocol( Util.Cache, Util.Http ):
       end = int( end )
       assert size == end + 1
 
-      print 'Server resumes transfer from byte', beg
       self.Response = Response.DataResponse
+      print 'Server resumes transfer from byte', beg
 
       self.open( size, beg )
 
