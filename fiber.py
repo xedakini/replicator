@@ -3,26 +3,26 @@ import sys, os, select, time, socket, traceback
 
 class SEND:
 
-  def __init__( self, sock ):
+  def __init__( self, sock, timeout ):
 
-    assert hasattr( sock, 'fileno' ), 'invalid SEND argument %r' % sock
-    self.sock = sock
+    self.fileno = sock.fileno()
+    self.expire = timeout > 0 and time.time() + timeout
 
 
 class RECV:
 
-  def __init__( self, sock ):
+  def __init__( self, sock, timeout ):
 
-    assert hasattr( sock, 'fileno' ), 'invalid RECV argument %r' % sock
-    self.sock = sock
+    self.fileno = sock.fileno()
+    self.expire = timeout > 0 and time.time() + timeout
 
 
 class WAIT:
 
-  def __init__( self, timeout = None ):
+  def __init__( self, timeout = -1 ):
 
-    assert timeout is None or timeout.__class__ in ( int, float, NoneType ), 'invalid WAIT argument %r' % timeout
-    self.timeout = timeout
+    self.fileno = None
+    self.expire = timeout > 0 and time.time() + timeout
 
 
 class Fiber:
@@ -31,52 +31,38 @@ class Fiber:
   writelines = sys.stdout.writelines
   softspace = 0
 
-  def __init__( self, generator, timeout ):
+  def __init__( self, generator ):
 
     self.__generator = generator
-    self.__timeout = timeout
-
-    self.state = WAIT
-    self.expire = None
-    self.fileno = None
+    self.state = WAIT()
 
   def step( self ):
 
+    self.state = None
     try:
       stdout = sys.stdout
       sys.stdout = self
       state = self.__generator.next()
-      self.state = state.__class__
-      assert self.state in ( SEND, RECV, WAIT ), 'invalid command %r' % cmd
+      assert isinstance( state, (SEND, RECV, WAIT) ), 'invalid waiting state %r' % state
+      self.state = state
     finally:
       sys.stdout = stdout
-
-    if self.state is WAIT:
-      if state.timeout is None:
-        self.expire = None
-      else:
-        self.expire = time.time() + state.timeout
-      self.fileno = None
-    else:
-      self.expire = time.time() + self.__timeout
-      self.fileno = state.sock.fileno()
 
   def __del__( self ):
 
     try:
       stdout = sys.stdout
       sys.stdout = self
-      del self.__generator # call destructors for output
+      del self.__generator
     finally:
       sys.stdout = stdout
 
 
 class GatherFiber( Fiber ):
 
-  def __init__( self, generator, timeout ):
+  def __init__( self, generator ):
 
-    Fiber.__init__( self, generator, timeout )
-
+    Fiber.__init__( self, generator )
     self.__lines = [ time.ctime() + '\n' ]
     self.__buffer = ''
     self.__start = time.time()
@@ -95,7 +81,7 @@ class GatherFiber( Fiber ):
     except KeyboardInterrupt:
       raise
     except StopIteration:
-      self.state = None
+      pass
     except AssertionError, msg:
       print >> self, 'Error:', msg
     except:
@@ -113,9 +99,9 @@ class GatherFiber( Fiber ):
 
 class DebugFiber( Fiber ):
 
-  def __init__( self, generator, timeout ):
+  def __init__( self, generator ):
 
-    Fiber.__init__( self, generator, timeout )
+    Fiber.__init__( self, generator )
 
     self.__id = ' %s  ' % id( generator )
     self.__frame = generator.gi_frame
@@ -138,7 +124,6 @@ class DebugFiber( Fiber ):
       Fiber.step( self )
       leave = self.__frame.f_lineno
     except StopIteration:
-      self.state = None
       print >> self, 'Done'
     else:
       print >> self, '%i -> %i' % ( enter, leave )
@@ -148,7 +133,7 @@ class DebugFiber( Fiber ):
     return 'fiber %s waiting at :%i' % ( self.__id, self.__frame.f_lineno )
 
 
-def spawn( generator, port, timeout, debug ):
+def spawn( generator, port, debug ):
 
   listener = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
   listener.setblocking( 0 )
@@ -174,28 +159,27 @@ def spawn( generator, port, timeout, debug ):
       expire = None
 
       for i in range( len( fibers ) -1, -1, -1 ):
+        state = fibers[ i ].state
 
-        if fibers[ i ].state is None:
+        if state and time.time() > state.expire:
+          if isinstance( state, WAIT ):
+            fibers[ i ].step()
+            state = fibers[ i ].state
+          else:
+            print >> fibers[ i ], 'Timed out'
+            state = None
+
+        if not state:
           del fibers[ i ]
           continue
 
-        if fibers[ i ].expire < time.time():
-          if fibers[ i ].state is WAIT:
-            fibers[ i ].step()
-          else:
-            print >> fibers[ i ], 'Timed out'
-            del fibers[ i ]
-            continue
-
-        if fibers[ i ].state is RECV:
-          tryrecv[ fibers[ i ].fileno ] = fibers[ i ]
-        elif fibers[ i ].state is SEND:
-          trysend[ fibers[ i ].fileno ] = fibers[ i ]
+        if isinstance( state, RECV ):
+          tryrecv[ state.fileno ] = fibers[ i ]
+        elif isinstance( state, SEND ):
+          trysend[ state.fileno ] = fibers[ i ]
         
-        if not expire:
-          expire = fibers[ i ].expire
-        elif fibers[ i ].expire:
-          expire = min( expire, fibers[ i ].expire )
+        if not expire or state.expire and state.expire < expire:
+          expire = state.expire
 
       if expire is None:
         print '[ IDLE ]'
@@ -208,7 +192,8 @@ def spawn( generator, port, timeout, debug ):
 
       for fileno in canrecv:
         if fileno is listener.fileno():
-          fibers.append( myFiber( generator( *listener.accept() ), timeout ) )
+          client, address = listener.accept()
+          fibers.append( myFiber( generator( client, address ) ) )
         else:
           tryrecv[ fileno ].step()
       for fileno in cansend:

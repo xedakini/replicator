@@ -88,8 +88,8 @@ class DataResponse:
     if Params.VERBOSE > 0:
       print 'Sending', head
       if Params.VERBOSE > 1:
-        for item in args.items():
-          print '<', ': '.join( item )
+        for key in args:
+          print '<', key + ':', args[ key ].replace( '\r\n', ' < ' )
 
     self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
     self.__file = protocol.file()

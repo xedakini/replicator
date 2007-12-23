@@ -13,7 +13,7 @@ def transaction( client, address ):
 
   request = Request.HttpRequest()
   while not request.Protocol:
-    yield fiber.RECV( client )
+    yield fiber.RECV( client, Params.TIMEOUT )
     request.recv( client )
 
   try:
@@ -32,10 +32,10 @@ def transaction( client, address ):
       while not protocol.Response:
         server = protocol.socket()
         if protocol.cansend():
-          yield fiber.SEND( server )
+          yield fiber.SEND( server, Params.TIMEOUT )
           protocol.send( server )
         else:
-          yield fiber.RECV( server )
+          yield fiber.RECV( server, Params.TIMEOUT )
           protocol.recv( server )
 
     response = protocol.Response( protocol, request )
@@ -44,15 +44,15 @@ def transaction( client, address ):
 
   while not response.Done:
     if response.cansend():
-      yield fiber.SEND( client )
+      yield fiber.SEND( client, Params.TIMEOUT )
       response.send( client )
     elif response.canrecv():
       server = protocol.socket()
-      yield fiber.RECV( server )
+      yield fiber.RECV( server, Params.TIMEOUT )
       response.recv( server )
     else:
       yield fiber.WAIT( .5 )
 
   print 'Done'
 
-fiber.spawn( transaction, Params.PORT, Params.TIMEOUT, Params.DEBUG )
+fiber.spawn( transaction, Params.PORT, Params.DEBUG )

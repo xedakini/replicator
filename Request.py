@@ -58,7 +58,7 @@ class HttpRequest( Util.Http ):
 
     sep = self.__host.find( ':' )
     if sep != -1:
-      self.__host, self.__port = host[ :sep ], int( host[ sep+1: ] )
+      self.__host, self.__port = self.__host[ :sep ], int( self.__host[ sep+1: ] )
 
   def cmd( self ):
 
