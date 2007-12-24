@@ -192,8 +192,7 @@ def spawn( generator, port, debug ):
 
       for fileno in canrecv:
         if fileno is listener.fileno():
-          client, address = listener.accept()
-          fibers.append( myFiber( generator( client, address ) ) )
+          fibers.append( myFiber( generator( *listener.accept() ) ) )
         else:
           tryrecv[ fileno ].step()
       for fileno in cansend:
