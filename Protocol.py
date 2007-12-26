@@ -197,6 +197,7 @@ class HttpProtocol( Cache ):
     args.pop( 'Accept-Encoding', None )
     args.pop( 'Proxy-Connection', None )
     args.pop( 'Proxy-Authorization', None )
+    args.pop( 'Range', None )
     if self.incache():
       print 'Checking if cache is up to date'
       args[ 'If-Modified-Since' ] = time.strftime( Params.TIMEFMT, time.gmtime( self.mtime() ) )
@@ -205,13 +206,11 @@ class HttpProtocol( Cache ):
       args[ 'If-Unmodified-Since' ] = time.strftime( Params.TIMEFMT, time.gmtime( self.mtime() ) )
       args[ 'Range' ] = 'bytes=%i-' % self.size()
 
-    self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', request.body() ] )
-    self.__recvbuf = ''
-    self.__status = ''
-    self.__message = ''
-    self.__args = {}
     self.__request = request
     self.__socket = connect( request.addr() )
+    self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', request.body() ] )
+    self.__recvbuf = ''
+    self.__parse = self.__parse_head
 
   def send( self, sock ):
 
@@ -220,42 +219,62 @@ class HttpProtocol( Cache ):
     bytes = sock.send( self.__sendbuf )
     self.__sendbuf = self.__sendbuf[ bytes: ]
 
+  def __parse_head( self, chunk ):
+
+    eol = chunk.find( '\n' ) + 1
+    if eol == 0:
+      return 0
+
+    line = chunk[ :eol ].rstrip()
+    print 'Server sends', line
+    fields = line.split()
+    assert len( fields ) >= 3 and fields[ 0 ].startswith( 'HTTP/' ) and fields[ 1 ].isdigit(), 'invalid header line: %r' % line.rstrip()
+    self.__status = int( fields[ 1 ] )
+    self.__message = ' '.join( fields[ 2: ] )
+    self.__args = {}
+    self.__parse = self.__parse_args
+
+    return eol
+
+  def __parse_args( self, chunk ):
+
+    eol = chunk.find( '\n' ) + 1
+    if eol == 0:
+      return 0
+
+    line = chunk[ :eol ].rstrip()
+    if ': ' in line:
+      if Params.VERBOSE > 1:
+        print '>', line.rstrip()
+      key, value = line.split( ': ', 1 )
+      key = key.title()
+      if key in self.__args:
+        self.__args[ key ] += '\r\n' + key + ': ' +  value
+        if Params.VERBOSE:
+          print 'Merged', key, 'values'
+      else:
+        self.__args[ key ] = value
+    elif line:
+      print 'Ignored:', line
+    else:
+      self.__parse = None
+
+    return eol
+
   def recv( self, sock ):
 
     assert not self.cansend()
 
     chunk = sock.recv( Params.MAXCHUNK, socket.MSG_PEEK )
     assert chunk, 'server closed connection before sending a complete message header'
-
-    for line in chunk.splitlines( True ):
-      sock.recv( len( line ) )
-      self.__recvbuf, line = '', self.__recvbuf + line
-      if line[ -1 ] != '\n':
-        self.__recvbuf = line
-      elif not self.__status:
-        print 'Server sends', line.rstrip()
-        fields = line.split()
-        assert len( fields ) >= 3 and fields[ 0 ].startswith( 'HTTP/' ) and fields[ 1 ].isdigit(), 'invalid header line: %r' % line.rstrip()
-        self.__status = int( fields[ 1 ] )
-        self.__message = ' '.join( fields[ 2: ] )
-      elif line == '\n' or line == '\r\n':
-        break
-      elif ':' in line:
-        if Params.VERBOSE > 1:
-          print '>', line.rstrip()
-        key, value = line.split( ':', 1 )
-        key = key.title()
-        value = value.strip()
-        if key in self.__args:
-          self.__args[ key ] += '\r\n' + key + ': ' +  value
-          if Params.VERBOSE:
-            print 'Merged', key, 'values'
-        else:
-          self.__args[ key ] = value
-      else:
-        print 'Ignored:', line.rstrip()
-    else:
-      return
+    self.__recvbuf += chunk
+    while self.__parse:
+      bytes = self.__parse( self.__recvbuf )
+      if not bytes:
+        sock.recv( len( chunk ) )
+        return
+      self.__recvbuf = self.__recvbuf[ bytes: ]
+    sock.recv( len( chunk ) - len( self.__recvbuf ) )
 
     if self.__status in ( 412, 416 ) and self.partial(): # TODO: check 412
  

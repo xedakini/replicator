@@ -45,7 +45,7 @@ class DataResponse:
       assert range.startswith( 'bytes=' )
       sep = range.find( '-', 6 )
       beg = int( range[ 6:sep  ] or 0 )
-      end = int( range[ sep+1: ] or 0 )
+      end = int( range[ sep+1: ] or size )
       if end and not beg:
         print 'Requested last', end, 'bytes'
         self.__pos = size - end

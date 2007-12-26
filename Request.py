@@ -7,12 +7,67 @@ class HttpRequest:
 
   def __init__( self ):
 
+    self.__parse = self.__parse_head
     self.__recvbuf = ''
-    self.__size = -1
-    self.__body = None
-    self.__cmd = None
-    self.__path = None
+
+  def __parse_head( self, chunk ):
+
+    eol = chunk.find( '\n' ) + 1
+    if eol == 0:
+      return 0
+
+    line = chunk[ :eol ].rstrip()
+    print 'Client sends', line
+    fields = line.split()
+    assert len( fields ) == 3, 'invalid header line: %r' % line
+    self.__cmd, self.__path, dummy = fields
     self.__args = {}
+    self.__parse = self.__parse_args
+
+    return eol
+
+  def __parse_args( self, chunk ):
+
+    eol = chunk.find( '\n' ) + 1
+    if eol == 0:
+      return 0
+
+    line = chunk[ :eol ].rstrip()
+    if ': ' in line:
+      if Params.VERBOSE > 1:
+        print '>', line.rstrip()
+      key, value = line.split( ': ', 1 )
+      key = key.title()
+      if key in self.__args:
+        self.__args[ key ] += '\r\n' + key + ': ' +  value
+        if Params.VERBOSE:
+          print 'Merged', key, 'values'
+      else:
+        self.__args[ key ] = value
+    elif line:
+      print 'Ignored:', line
+    else:
+      self.__size = int( self.__args.get( 'Content-Length', 0 ) )
+      if self.__cmd == 'POST':
+        if Params.VERBOSE:
+          print 'Opening temporary file for POST upload'
+        self.__body = os.tmpfile()
+        self.__parse = self.__parse_body
+      else:
+        assert not self.__size, '%s request announces message body' % self.__cmd
+        self.__body = None
+        self.__parse = None
+
+    return eol
+
+  def __parse_body( self, chunk ):
+
+    self.__body.write( chunk )
+    assert self.__body.tell() <= self.__size, 'message body exceeds content-length'
+    if self.__body.tell() == self.__size:
+      self.__parse = None
+
+    return len( chunk )
 
   def recv( self, sock ):
 
@@ -20,47 +75,14 @@ class HttpRequest:
 
     chunk = sock.recv( Params.MAXCHUNK )
     assert chunk, 'client closed connection before sending a complete message header'
-    if self.__recvbuf:
-      chunk = self.__recvbuf + chunk
-      self.__recvbuf = ''
-
-    for line in chunk.splitlines( True ):
-      if self.__size != -1:
-        assert self.__body, '%s request has message body' % self.__cmd
-        self.__body.write( line )
-        assert self.__body.tell() <= self.__size, 'message body exceeds content-length'
-      elif line[ -1 ] != '\n':
-        self.__recvbuf = line
-      elif not self.__cmd:
-        print 'Client sends', line.rstrip()
-        fields = line.split()
-        assert len( fields ) == 3, 'invalid header line: %r' % line.rstrip()
-        self.__cmd, self.__path, dummy = fields
-      elif line == '\n' or line == '\r\n':
-        self.__size = int( self.__args.get( 'Content-Length', 0 ) )
-        if self.__cmd == 'POST':
-          if Params.VERBOSE:
-            print 'Opening temporary file for POST upload'
-          self.__body = os.tmpfile()
-        else:
-          assert not self.__size, '%s request announces message body' % self.__cmd
-      elif ':' in line:
-        if Params.VERBOSE > 1:
-          print '>', line.rstrip()
-        key, value = line.split( ':', 1 )
-        key = key.title()
-        value = value.strip()
-        if key in self.__args:
-          self.__args[ key ] += '\r\n' + key + ': ' +  value
-          if Params.VERBOSE:
-            print 'Merged', key, 'values'
-        else:
-          self.__args[ key ] = value
-      else:
-        print 'Ignored:', line.rstrip()
-
-    if self.__size == -1 or self.__body and self.__body.tell() < self.__size:
-      return
+    chunk = self.__recvbuf + chunk
+    while self.__parse:
+      bytes = self.__parse( chunk )
+      if not bytes:
+        self.__recvbuf = chunk
+        return
+      chunk = chunk[ bytes: ]
+    assert not chunk, 'client sends junk data after message header'
 
     if self.__path.startswith( 'http://' ):
       self.Protocol = Protocol.HttpProtocol
@@ -121,4 +143,6 @@ class HttpRequest:
   def __eq__( self, other ):
 
     assert self.Protocol
-    return ( self.__cmd, self.__host, self.__port, self.__path ) == ( other.__cmd, other.__host, other.__port, other.__path )
+    request1 = self.__cmd,  self.__host,  self.__port,  self.__path
+    request2 = other.__cmd, other.__host, other.__port, other.__path
+    return request1 == request2

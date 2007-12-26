@@ -19,7 +19,7 @@ OUT="$BASE.out"
 echo -n "UNITTEST $1: "
 rm -rf $BASE.*
 mkdir $CACHE
-./http-replicator -p $PORT -r $CACHE -v -v --debug > $LOG &
+./http-replicator -p $PORT -r $CACHE -v -v > $LOG &
 sleep 1
 
 REPLICATOR=$!
