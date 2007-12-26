@@ -82,7 +82,7 @@ class GatherFiber( Fiber ):
       raise
     except StopIteration:
       pass
-    except AssertionError, msg:
+    except ( AssertionError, socket.error ), msg:
       print >> self, 'Error:', msg
     except:
       print >> self, ''.join( traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback ) ).rstrip()
@@ -124,7 +124,9 @@ class DebugFiber( Fiber ):
       Fiber.step( self )
       leave = self.__frame.f_lineno
     except StopIteration:
-      print >> self, 'Done'
+      print >> self, 'End of fiber.'
+    except ( AssertionError, socket.error ), msg:
+      print >> self, 'Error:', msg
     else:
       print >> self, '%i -> %i' % ( enter, leave )
 

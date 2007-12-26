@@ -1,0 +1,79 @@
+#! /bin/bash
+
+if [ -z "$1" ]; then
+  echo "Running all tests in sequence."
+  while [ $((++i)) -le 5 ]; do
+    $0 $i
+    echo
+  done
+  exit 0
+fi
+
+URL="docs.python.org:80/ftp/python/doc/2.5/latex-2.5.tar.bz2"
+PORT="8090"
+BASE="/tmp/unittest$1"
+CACHE="$BASE.cache"
+LOG="$BASE.log"
+OUT="$BASE.out"
+
+echo -n "UNITTEST $1: "
+rm -rf $BASE.*
+mkdir $CACHE
+./http-replicator -p $PORT -r $CACHE -v -v --debug > $LOG &
+sleep 1
+
+REPLICATOR=$!
+
+case $1 in
+  1)
+    echo "Downloading"
+    curl -x localhost:$PORT -o $OUT http://$URL -#
+    sleep 1
+    echo " * equal files downloaded and in cache ................................. $(if [ `md5 -q $OUT` == `md5 -q $CACHE/$URL` ]; then echo OK; else echo ERROR; fi)"
+    ;;
+  2)
+    echo "Serving from cache"
+    curl -x localhost:$PORT -o $OUT http://$URL -#
+    curl -x localhost:$PORT -o $OUT http://$URL -#
+    sleep 1
+    echo " * files served from cache ............................................. $(if grep -q 'Complete file in cache' $LOG; then echo OK; else echo ERROR; fi)"
+    echo " * equal files downloaded and in cache ................................. $(if [ `md5 -q $OUT` == `md5 -q $CACHE/$URL` ]; then echo OK; else echo ERROR; fi)"
+    ;;
+  3)
+    echo "Joining downloads"
+    echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%% FIRST DOWNLOAD %%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+    curl -x localhost:$PORT -o ${OUT}1 http://$URL -s &
+    sleep 2
+    curl -x localhost:$PORT -o ${OUT}2 http://$URL -#
+    sleep 1
+    echo " * downloads are joined ................................................ $(if grep -q 'Joined running download' $LOG; then echo OK; else echo ERROR; fi)"
+    echo " * downloads are equal ................................................. $(if [ `md5 -q ${OUT}1` == `md5 -q ${OUT}2` ]; then echo OK; else echo ERROR; fi)"
+    ;;
+  4)
+    echo "Partial downloads"
+    curl -x localhost:$PORT -o $OUT http://$URL -# &
+    sleep 1
+    echo
+    kill $!
+    sleep 1
+    curl -x localhost:$PORT -o $OUT http://$URL -#
+    sleep 1
+    echo " * download is resumed ................................................. $(if grep -q 'Requesting resume of partial file' $LOG; then echo OK; else echo ERROR; fi)"
+    echo " * equal files downloaded and in cache ................................. $(if [ `md5 -q $OUT` == `md5 -q $CACHE/$URL` ]; then echo OK; else echo ERROR; fi)"
+    ;;
+  5)
+    echo "Resuming downloads"
+    curl -o $OUT http://$URL -# &
+    sleep 1
+    echo
+    kill $!
+    curl -x localhost:$PORT -C - -o $OUT http://$URL -#
+    sleep 1
+    echo " * equal files downloaded and in cache ................................. $(if [ `md5 -q $OUT` == `md5 -q $CACHE/$URL` ]; then echo OK; else echo ERROR; fi)"
+    ;;
+  *)
+    echo "Not implemented"
+    ;;
+esac
+
+kill $REPLICATOR
