@@ -75,20 +75,23 @@ class HttpRequest:
 
     chunk = sock.recv( Params.MAXCHUNK )
     assert chunk, 'client closed connection before sending a complete message header'
-    chunk = self.__recvbuf + chunk
+    self.__recvbuf += chunk
     while self.__parse:
-      bytes = self.__parse( chunk )
+      bytes = self.__parse( self.__recvbuf )
       if not bytes:
-        self.__recvbuf = chunk
         return
-      chunk = chunk[ bytes: ]
-    assert not chunk, 'client sends junk data after message header'
+      self.__recvbuf = self.__recvbuf[ bytes: ]
+    assert not self.__recvbuf, 'client sends junk data after message header'
 
     if self.__path.startswith( 'http://' ):
-      self.Protocol = Protocol.HttpProtocol
       self.__path = self.__path[ 7: ]
       self.__port = 80
+      if self.__cmd == 'GET':
+        self.Protocol = Protocol.HttpProtocol
+      else:
+        self.Protocol = Protocol.BlindProtocol
     elif self.__path.startswith( 'ftp://' ):
+      assert self.__cmd == 'GET', '%s request unsupported for ftp' % self.__cmd
       self.Protocol = Protocol.FtpProtocol
       self.__path = self.__path[ 6: ]
       self.__port = 21
@@ -99,22 +102,51 @@ class HttpRequest:
     if sep == -1:
       self.__path += '/'
     self.__host, self.__path = self.__path[ :sep ], self.__path[ sep: ]
-
     sep = self.__host.find( ':' )
     if sep != -1:
       self.__host, self.__port = self.__host[ :sep ], int( self.__host[ sep+1: ] )
 
-  def args( self, key = None, value = None ):
+    self.__args[ 'Host' ] = self.__host
+    self.__args[ 'Connection' ] = 'close'
+    self.__args.pop( 'Keep-Alive', None )
+    self.__args.pop( 'Proxy-Connection', None )
+    self.__args.pop( 'Proxy-Authorization', None )
 
-    if key is not None:
-      return self.__args.get( key, value )
-
-    return self.__args.copy()
-
-  def cmd( self ):
+  def recvbuf( self ):
 
     assert self.Protocol
-    return self.__cmd
+    lines = [ '%s %s HTTP/1.1' % ( self.__cmd, self.__path ) ]
+    lines.extend( map( ': '.join, self.__args.items() ) )
+    lines.append( '' )
+    if self.__body:
+      self.__body.seek( 0 )
+      lines.append( self.__body.read() )
+    else:
+      lines.append( '' )
+
+    return '\r\n'.join( lines )
+
+  def args( self ):
+
+    assert self.Protocol
+    return self.__args.copy()
+
+  def range( self ):
+
+    range = self.__args.get( 'Range' )
+    if not range:
+      return 0, -1
+    try:
+      assert range.startswith( 'bytes=' )
+      beg, end = range[ 6: ].split( '-' )
+      if not beg:
+        return int( end ), -1
+      elif not end:
+        return int( beg ), -1
+      else:
+        return int( beg ), int( end ) + 1
+    except:
+      raise AssertionError, 'invalid range specification: %s' % range
 
   def addr( self ):
 
@@ -125,15 +157,6 @@ class HttpRequest:
 
     assert self.Protocol
     return self.__path
-
-  def body( self ):
-
-    assert self.Protocol
-    if self.__body:
-      self.__body.seek( 0 )
-      return self.__body.read()
-    else:
-      return ''
 
   def __hash__( self ):
 

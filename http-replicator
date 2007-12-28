@@ -20,39 +20,42 @@ def transaction( client, address ):
 
     while request in DOWNLOADS:
       protocol = DOWNLOADS[ request ]
-      if not protocol.canjoin():
-        del DOWNLOADS[ request ]
-        continue
       if protocol.Response:
-        print 'Joined running download'
-        break
-      yield fiber.WAIT()
+        if issubclass( protocol.Response, Response.DataResponse ):
+          print 'Joined running download'
+          break
+        del DOWNLOADS[ request ]
+      else:
+        yield fiber.WAIT()
     else:
+      print 'Switching to', request.Protocol.__name__
       protocol = DOWNLOADS[ request ] = request.Protocol( request )
+      server = protocol.socket()
       while not protocol.Response:
-        server = protocol.socket()
-        if protocol.cansend():
+        if protocol.hasdata():
           yield fiber.SEND( server, Params.TIMEOUT )
           protocol.send( server )
         else:
           yield fiber.RECV( server, Params.TIMEOUT )
           protocol.recv( server )
 
+    print 'Switching to', protocol.Response.__name__
     response = protocol.Response( protocol, request )
   except:
     response = Response.ExceptionResponse()
 
+  server = protocol.socket()
   while not response.Done:
     if response.cansend():
       yield fiber.SEND( client, Params.TIMEOUT )
       response.send( client )
     elif response.canrecv():
-      server = protocol.socket()
       yield fiber.RECV( server, Params.TIMEOUT )
       response.recv( server )
     else:
       yield fiber.WAIT( .5 )
 
   print 'Done'
+
 
 fiber.spawn( transaction, Params.PORT, Params.DEBUG )

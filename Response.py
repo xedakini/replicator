@@ -1,18 +1,26 @@
 import Params, time, sys, traceback
 
 
-class BasicResponse:
+class BlindResponse:
 
   Done = False
 
   def __init__( self, protocol, request ):
 
-    self.__sendbuf = '\r\n'.join( [ protocol.head() ] + map( ': '.join, protocol.args().items() ) + [ '', '' ] )
+    self.__sendbuf = protocol.recvbuf()
+
+  def cansend( self ):
+
+    return bool( self.__sendbuf )
 
   def send( self, sock ):
 
     bytes = sock.send( self.__sendbuf )
     self.__sendbuf = self.__sendbuf[ bytes: ]
+
+  def canrecv( self ):
+
+    return True
 
   def recv( self, sock ):
 
@@ -22,14 +30,6 @@ class BasicResponse:
     elif not self.__sendbuf:
       self.Done = True
 
-  def cansend( self ):
-
-    return bool( self.__sendbuf )
-
-  def canrecv( self ):
-
-    return True
-
 
 class DataResponse:
 
@@ -37,53 +37,29 @@ class DataResponse:
 
   def __init__( self, protocol, request ):
 
-    args = protocol.args()
-    size = protocol.size()
+    self.__protocol = protocol
+    self.__pos, self.__end = request.range()
+    if self.__end == -1:
+      self.__end = self.__protocol.size
 
-    range = request.args( 'Range' )
-    if range:
-      assert range.startswith( 'bytes=' )
-      sep = range.find( '-', 6 )
-      beg = int( range[ 6:sep  ] or 0 )
-      end = int( range[ sep+1: ] or size )
-      if end and not beg:
-        print 'Requested last', end, 'bytes'
-        self.__pos = size - end
-        self.__end = 0
-      else:
-        print 'Requested byte', beg, 'to', end or 'end'
-        self.__pos = beg
-        self.__end = end
-    else:
-      self.__pos = 0
-      self.__end = size
-
-    if self.__pos == 0 and self.__end == size:
-      head = 'HTTP/1.1 200 OK'
-      if size >= 0:
-        args[ 'Content-Length' ] = str( size )
-    elif 0 <= self.__pos <= self.__end <= size:
-      head = 'HTTP/1.1 206 Partial Content'
-      args[ 'Content-Range' ] = 'bytes %i-%i/%i' % ( self.__pos, self.__end - 1, size )
-      args[ 'Content-Length' ] = str( self.__end - self.__pos )
-    else:
-      head = 'HTTP/1.1 416 Requested Range Not Satisfiable'
-      if size >= 0:
-        args[ 'Content-Range' ] = 'bytes */%i' % size
-      else:
-        args[ 'Content-Range' ] = 'bytes */*'
-      args[ 'Content-Length' ] = '0'
-      self.__pos = self.__end = 0
-
+    args = self.__protocol.args()
     args[ 'Connection' ] = 'close'
     args[ 'Date' ] = time.strftime( Params.TIMEFMT, time.gmtime() )
-
-    if args.pop( 'Transfer-Encoding', None ) == 'chunked':
-      print 'Parsing chunked data'
-      self.__chunked = True
-      self.__recvbuf = ''
+    if self.__pos == 0 and self.__end == self.__protocol.size:
+      head = 'HTTP/1.1 200 OK'
+      if self.__protocol.size != -1:
+        args[ 'Content-Length' ] = str( self.__protocol.size )
+    elif self.__end != -1:
+      head = 'HTTP/1.1 206 Partial Content'
+      args[ 'Content-Length' ] = str( self.__end - self.__pos )
+      if self.__protocol.size != -1:
+        args[ 'Content-Range' ] = 'bytes %i-%i/%i' % ( self.__pos, self.__end - 1, self.__protocol.size )
+      else:
+        args[ 'Content-Range' ] = 'bytes %i-%i/*' % ( self.__pos, self.__end - 1 )
     else:
-      self.__chunked = False
+      head = 'HTTP/1.1 416 Requested Range Not Satisfiable'
+      args[ 'Content-Range' ] = 'bytes */*'
+      args[ 'Content-Length' ] = '0'
 
     if Params.VERBOSE > 0:
       print 'Sending', head
@@ -92,7 +68,17 @@ class DataResponse:
           print '<', key + ':', args[ key ].replace( '\r\n', ' < ' )
 
     self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
-    self.__file = protocol.file()
+
+  def cansend( self ):
+
+    if self.__sendbuf:
+      return True
+    elif self.__pos >= self.__protocol.tell():
+      return False
+    elif self.__pos < self.__end or self.__end == -1:
+      return True
+    else:
+      return False
 
   def send( self, sock ):
 
@@ -100,60 +86,61 @@ class DataResponse:
       bytes = sock.send( self.__sendbuf )
       self.__sendbuf = self.__sendbuf[ bytes: ]
     else:
-      self.__file.seek( self.__pos )
       bytes = Params.MAXCHUNK
       if 0 <= self.__end < self.__pos + bytes:
         bytes = self.__end - self.__pos
-      chunk = self.__file.read( bytes )
+      chunk = self.__protocol.read( self.__pos, bytes )
       self.__pos += sock.send( chunk )
 
-    self.Done = self.__pos >= self.__end >= 0
-
-  def recv( self, sock ):
-
-    chunk = sock.recv( Params.MAXCHUNK )
-
-    if self.__chunked:
-
-      self.__recvbuf += chunk
-
-      headsize = self.__recvbuf.find( '\r\n' )
-      if headsize == -1:
-        assert chunk, 'chunked data error: connection closed awaiting head'
-        return
-
-      datasize = int( self.__recvbuf[ :headsize ].split( ';' )[ 0 ], 16 )
-      if len( self.__recvbuf ) < headsize + 2 + datasize + 2:
-        assert chunk, 'chunked data error: connection closed awaiting data'
-        return
-
-      assert self.__recvbuf[ : headsize + 2 + datasize + 2 ].endswith( '\r\n' ), 'chunked data error: chunk does not match announced size'
-      if Params.VERBOSE:
-        print 'Received', datasize, 'byte chunk'
-
-      chunk = self.__recvbuf[ headsize + 2 : headsize + 2 + datasize ]
-      self.__recvbuf = self.__recvbuf[ headsize + 2 + datasize + 2 : ]
-
-    self.__file.seek( 0, 2 )
-    if chunk:
-      self.__file.write( chunk )
-    elif self.__end == -1:
-      self.__end = self.__file.tell()
-      print 'Connection closed; assuming file size', self.__end
-
-    self.Done = self.__pos >= self.__end >= 0
-
-  def cansend( self ):
-
-    if self.__sendbuf:
-      return True
-
-    self.__file.seek( 0, 2 )
-    return self.__pos < self.__file.tell()
+    self.Done = not self.__sendbuf and self.__pos >= self.__end >= 0
 
   def canrecv( self ):
 
     return True
+
+  def recv( self, sock ):
+
+    chunk = sock.recv( Params.MAXCHUNK )
+    if chunk:
+      self.__protocol.write( chunk )
+    elif self.__protocol.size == -1:
+      self.__protocol.size = self.__protocol.tell()
+      print 'Connection closed at size', self.__protocol.size
+
+    self.Done = not self.__sendbuf and self.__pos >= self.__end >= 0
+
+
+class ChunkedDataResponse( DataResponse ):
+
+  def __init__( self, protocol, request ):
+
+    DataResponse.__init__( self, protocol, request )
+    self.__protocol = protocol
+    self.__recvbuf = ''
+
+  def recv( self, sock ):
+
+    chunk = sock.recv( Params.MAXCHUNK )
+    self.__recvbuf += chunk
+    beg = self.__recvbuf.find( '\n' ) + 1
+    if not beg:
+      assert chunk, 'chunked data error: connection closed waiting for header'
+      return
+    end = beg + int( self.__recvbuf[ :beg ].split( ';' )[ 0 ], 16 )
+    if len( self.__recvbuf ) < end + 2:
+      assert chunk, 'chunked data error: connection closed waiting for data'
+      return
+    assert self.__recvbuf[ end:end+2 ] == '\r\n', 'chunked data error: chunk does not match announced size'
+    if Params.VERBOSE:
+      print 'Received', end - beg, 'byte chunk'
+
+    if end > beg:
+      self.__protocol.write( self.__recvbuf[ beg:end ] )
+      self.__recvbuf = self.__recvbuf[ end+2: ]
+    else:
+      self.size = self.__protocol.tell()
+      print 'Connection closed; assuming file size', self.size
+      self.Done = not self.cansend()
 
 
 class NotFoundResponse:
@@ -164,16 +151,16 @@ class NotFoundResponse:
 
     self.__sendbuf = 'HTTP/1.1 404 Not Found\r\n\r\n'
 
+  def cansend( self ):
+
+    return bool( self.__sendbuf )
+
   def send( self, sock ):
 
     bytes = sock.send( self.__sendbuf )
     self.__sendbuf = self.__sendbuf[ bytes: ]
     if not self.__sendbuf:
       self.Done = True
-
-  def cansend( self ):
-
-    return bool( self.__sendbuf )
 
 
 class ExceptionResponse:

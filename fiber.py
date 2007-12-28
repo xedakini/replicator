@@ -48,14 +48,9 @@ class Fiber:
     finally:
       sys.stdout = stdout
 
-  def __del__( self ):
+  def __repr__( self ):
 
-    try:
-      stdout = sys.stdout
-      sys.stdout = self
-      del self.__generator
-    finally:
-      sys.stdout = stdout
+    return '%s:%i' % ( self.state.__class__.__name__, self.__generator.gi_frame.f_lineno )
 
 
 class GatherFiber( Fiber ):
@@ -89,23 +84,21 @@ class GatherFiber( Fiber ):
 
   def __del__( self ):
 
-    try:
-      Fiber.__del__( self )
-    except:
-      print >> self, ''.join( traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback ) ).rstrip()
-
     Fiber.writelines( self.__lines )
 
 
 class DebugFiber( Fiber ):
 
+  id = 0
+
   def __init__( self, generator ):
 
     Fiber.__init__( self, generator )
 
-    self.__id = ' %s  ' % id( generator )
-    self.__frame = generator.gi_frame
+    self.__id = '[ 0x%02X ] ' % ( DebugFiber.id % 256 )
     self.__newline = True
+
+    DebugFiber.id += 1
 
     print >> self, 'New fiber'
 
@@ -120,19 +113,15 @@ class DebugFiber( Fiber ):
   def step( self ):
 
     try:
-      enter = self.__frame.f_lineno
+      enter = repr( self )
       Fiber.step( self )
-      leave = self.__frame.f_lineno
+      leave = repr( self )
     except StopIteration:
       print >> self, 'End of fiber.'
     except ( AssertionError, socket.error ), msg:
       print >> self, 'Error:', msg
     else:
-      print >> self, '%i -> %i' % ( enter, leave )
-
-  def __repr__( self ):
-
-    return 'fiber %s waiting at :%i' % ( self.__id, self.__frame.f_lineno )
+      print >> self, '%s -> %s' % ( enter, leave )
 
 
 def spawn( generator, port, debug ):

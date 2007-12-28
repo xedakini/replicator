@@ -1,79 +1,127 @@
 #! /bin/bash
 
-if [ -z "$1" ]; then
-  echo "Running all tests in sequence."
-  while [ $((++i)) -le 5 ]; do
-    $0 $i
-    echo
-  done
-  exit 0
-fi
-
-URL="docs.python.org:80/ftp/python/doc/2.5/latex-2.5.tar.bz2"
+TESTS=8
+URL="www.w3.org:80/Protocols/HTTP/1.1/rfc2616.txt.gz"
 PORT="8090"
 BASE="/tmp/unittest$1"
 CACHE="$BASE.cache"
 LOG="$BASE.log"
 OUT="$BASE.out"
 
+if [ -z "$1" ]; then
+  echo "Running all tests in sequence:"
+  while [ $((++i)) -le $TESTS ]; do $0 $i; done
+  exit 0
+fi
+
+function exists
+{
+  if test -e $1; then echo OK; else echo ERRO; fi
+}
+
+function compare
+{
+  if test `md5 -q $1` == `md5 -q $CACHE/$URL`; then echo OK; else echo ERROR; fi
+}
+
+function logged
+{
+  if grep -q "$1" $LOG; then echo OK; else echo ERROR; fi
+}
+
 echo -n "UNITTEST $1: "
+set -m
 rm -rf $BASE.*
 mkdir $CACHE
 ./http-replicator -p $PORT -r $CACHE -v -v > $LOG &
-sleep 1
-
-REPLICATOR=$!
-
+sleep .5
 case $1 in
   1)
-    echo "Downloading"
+    echo "DOWNLOADING NEW FILE"
     curl -x localhost:$PORT -o $OUT http://$URL -#
-    sleep 1
-    echo " * equal files downloaded and in cache ................................. $(if [ `md5 -q $OUT` == `md5 -q $CACHE/$URL` ]; then echo OK; else echo ERROR; fi)"
+    sleep .5
+    echo " * file cached and finalized ........................................... `exists $CACHE/$URL`"
+    echo " * cached and served file are equal .................................... `compare $OUT $CACHE/$URL`"
     ;;
   2)
-    echo "Serving from cache"
-    curl -x localhost:$PORT -o $OUT http://$URL -#
-    curl -x localhost:$PORT -o $OUT http://$URL -#
-    sleep 1
-    echo " * files served from cache ............................................. $(if grep -q 'Complete file in cache' $LOG; then echo OK; else echo ERROR; fi)"
-    echo " * equal files downloaded and in cache ................................. $(if [ `md5 -q $OUT` == `md5 -q $CACHE/$URL` ]; then echo OK; else echo ERROR; fi)"
-    ;;
-  3)
-    echo "Joining downloads"
-    echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%% FIRST DOWNLOAD %%%%%%%%%%%%%%%%%%%%%%%%%%%%"
-    curl -x localhost:$PORT -o ${OUT}1 http://$URL -s &
-    sleep 2
-    curl -x localhost:$PORT -o ${OUT}2 http://$URL -#
-    sleep 1
-    echo " * downloads are joined ................................................ $(if grep -q 'Joined running download' $LOG; then echo OK; else echo ERROR; fi)"
-    echo " * downloads are equal ................................................. $(if [ `md5 -q ${OUT}1` == `md5 -q ${OUT}2` ]; then echo OK; else echo ERROR; fi)"
-    ;;
-  4)
-    echo "Partial downloads"
+    echo "LEAVING PARTIAL FILE IN CACHE"
     curl -x localhost:$PORT -o $OUT http://$URL -# &
     sleep 1
+    kill -int %+
     echo
-    kill $!
-    sleep 1
-    curl -x localhost:$PORT -o $OUT http://$URL -#
-    sleep 1
-    echo " * download is resumed ................................................. $(if grep -q 'Requesting resume of partial file' $LOG; then echo OK; else echo ERROR; fi)"
-    echo " * equal files downloaded and in cache ................................. $(if [ `md5 -q $OUT` == `md5 -q $CACHE/$URL` ]; then echo OK; else echo ERROR; fi)"
+    sleep .5
+    echo " * file cached, not finalized .......................................... `exists $CACHE/$URL.incomplete`"
     ;;
-  5)
-    echo "Resuming downloads"
+  3)
+    echo "SERVING FILE FROM CACHE"
+    curl -x localhost:$PORT -o ${OUT}1 http://$URL -#
+    curl -x localhost:$PORT -o ${OUT}2 http://$URL -#
+    sleep .5
+    echo " * first file cached and finalized ..................................... `exists $CACHE/$URL`"
+    echo " * second file served from cache ....................................... `logged 'Complete file in cache'`"
+    echo " * cached and first served file are equal .............................. `compare ${OUT}1 $CACHE/$URL`"
+    echo " * cached and second served file are equal ............................. `compare ${OUT}2 $CACHE/$URL`"
+    ;;
+  4)
+    echo "RESUMING PARTIAL FILE BY CLIENT"
     curl -o $OUT http://$URL -# &
     sleep 1
+    kill -int %+
     echo
-    kill $!
     curl -x localhost:$PORT -C - -o $OUT http://$URL -#
+    sleep .5
+    echo " * received complete file .............................................. `logged 'Server sends HTTP/1.1 200 OK'`"
+    echo " * served partial file ................................................. `logged 'Sending HTTP/1.1 206 Partial Content'`"
+    echo " * cached and served file are equal .................................... `compare $OUT $CACHE/$URL`"
+    ;;
+  5)
+    echo "REDOWNLOADING CHANGED FILE"
+    mkdir -p $CACHE/$URL
+    rmdir $CACHE/$URL
+    touch -m -t 190112140000 $CACHE/$URL
+    curl -x localhost:$PORT -o $OUT http://$URL -#
+    sleep .5
+    echo " * detected complete file in cache ..................................... `logged 'Complete file in cache'`"
+    echo " * downloading new file ................................................ `logged 'Opening new file'`"
+    echo " * cached and served file are equal .................................... `compare $OUT $CACHE/$URL`"
+    ;;
+  6)
+    echo "RESUMING PARTIAL UNCHANGED FILE IN CACHE"
+    curl -x localhost:$PORT -o $OUT http://$URL -# &
     sleep 1
-    echo " * equal files downloaded and in cache ................................. $(if [ `md5 -q $OUT` == `md5 -q $CACHE/$URL` ]; then echo OK; else echo ERROR; fi)"
+    kill -int %+
+    echo
+    sleep .5
+    curl -x localhost:$PORT -o $OUT http://$URL -#
+    sleep .5
+    echo " * replicator asks for missing part..................................... `logged 'Partial file in cache'`"
+    echo " * received partial file ............................................... `logged 'Server sends HTTP/1.1 206 Partial Content'`"
+    echo " * cached and served file are equal .................................... `compare $OUT $CACHE/$URL`"
+    ;;
+  7)
+    echo "RESUMING PARTIAL CHANGED FILE IN CACHE"
+    mkdir -p $CACHE/$URL
+    rmdir $CACHE/$URL
+    ps aux > $CACHE/$URL.incomplete
+    curl -x localhost:$PORT -o $OUT http://$URL -#
+    sleep .5
+    echo " * replicator asks for missing part..................................... `logged 'Partial file in cache'`"
+    echo " * received complete file .............................................. `logged 'Server sends HTTP/1.1 200 OK'`"
+    echo " * cached and served file are equal .................................... `compare $OUT $CACHE/$URL`"
+    ;;
+  8)
+    echo "JOINING DOWNLOADS"
+    echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%% FIRST DOWNLOAD %%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+    curl -x localhost:$PORT -o ${OUT}1 http://$URL -s &
+    sleep 1
+    curl -x localhost:$PORT -o ${OUT}2 http://$URL -#
+    sleep .5
+    echo " * downloads are joined ................................................ `logged 'Joined running download'`"
+    echo " * cached and first served file are equal .............................. `compare ${OUT}1 $CACHE/$URL`"
+    echo " * cached and second served file are equal ............................. `compare ${OUT}2 $CACHE/$URL`"
     ;;
   *)
     echo "Not implemented"
     ;;
 esac
-
-kill $REPLICATOR
+kill -int %-
