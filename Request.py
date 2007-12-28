@@ -20,7 +20,7 @@ class HttpRequest:
     print 'Client sends', line
     fields = line.split()
     assert len( fields ) == 3, 'invalid header line: %r' % line
-    self.__cmd, self.__path, dummy = fields
+    self.__cmd, self.__url, dummy = fields
     self.__args = {}
     self.__parse = self.__parse_args
 
@@ -35,7 +35,7 @@ class HttpRequest:
     line = chunk[ :eol ].rstrip()
     if ': ' in line:
       if Params.VERBOSE > 1:
-        print '>', line.rstrip()
+        print '>', len( line ) > 80 and line[ :77 ] + '...' or line
       key, value = line.split( ': ', 1 )
       key = key.title()
       if key in self.__args:
@@ -83,30 +83,32 @@ class HttpRequest:
       self.__recvbuf = self.__recvbuf[ bytes: ]
     assert not self.__recvbuf, 'client sends junk data after message header'
 
-    if self.__path.startswith( 'http://' ):
-      self.__path = self.__path[ 7: ]
-      self.__port = 80
+    if self.__url.startswith( 'http://' ):
+      host = self.__url[ 7: ]
+      port = 80
       if self.__cmd == 'GET':
         self.Protocol = Protocol.HttpProtocol
       else:
         self.Protocol = Protocol.BlindProtocol
-    elif self.__path.startswith( 'ftp://' ):
+    elif self.__url.startswith( 'ftp://' ):
       assert self.__cmd == 'GET', '%s request unsupported for ftp' % self.__cmd
       self.Protocol = Protocol.FtpProtocol
-      self.__path = self.__path[ 6: ]
-      self.__port = 21
+      host = self.__url[ 6: ]
+      port = 21
     else:
       raise AssertionError, 'invalid url: %s' % url
+    if '/' in host:
+      host, path = host.split( '/', 1 )
+    else:
+      path = ''
+    if ':' in host:
+      host, port = host.split( ':' )
+      port = int( port )
 
-    sep = self.__path.find( '/' )
-    if sep == -1:
-      self.__path += '/'
-    self.__host, self.__path = self.__path[ :sep ], self.__path[ sep: ]
-    sep = self.__host.find( ':' )
-    if sep != -1:
-      self.__host, self.__port = self.__host[ :sep ], int( self.__host[ sep+1: ] )
-
-    self.__args[ 'Host' ] = self.__host
+    self.__host = host
+    self.__port = port
+    self.__path = path
+    self.__args[ 'Host' ] = host
     self.__args[ 'Connection' ] = 'close'
     self.__args.pop( 'Keep-Alive', None )
     self.__args.pop( 'Proxy-Connection', None )
@@ -115,7 +117,7 @@ class HttpRequest:
   def recvbuf( self ):
 
     assert self.Protocol
-    lines = [ '%s %s HTTP/1.1' % ( self.__cmd, self.__path ) ]
+    lines = [ '%s /%s HTTP/1.1' % ( self.__cmd, self.__path ) ]
     lines.extend( map( ': '.join, self.__args.items() ) )
     lines.append( '' )
     if self.__body:
@@ -125,6 +127,11 @@ class HttpRequest:
       lines.append( '' )
 
     return '\r\n'.join( lines )
+
+  def url( self ):
+
+    assert self.Protocol
+    return self.__host, self.__port, self.__path
 
   def args( self ):
 
@@ -147,16 +154,6 @@ class HttpRequest:
         return int( beg ), int( end ) + 1
     except:
       raise AssertionError, 'invalid range specification: %s' % range
-
-  def addr( self ):
-
-    assert self.Protocol
-    return self.__host, self.__port
-
-  def path( self ):
-
-    assert self.Protocol
-    return self.__path
 
   def __hash__( self ):
 

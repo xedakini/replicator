@@ -1,4 +1,4 @@
-import Params, time, sys, traceback
+import Params, time
 
 
 class BlindResponse:
@@ -45,14 +45,16 @@ class DataResponse:
     args = self.__protocol.args()
     args[ 'Connection' ] = 'close'
     args[ 'Date' ] = time.strftime( Params.TIMEFMT, time.gmtime() )
+    if self.__protocol.mtime >= 0:
+      args[ 'Last-Modified' ] = time.strftime( Params.TIMEFMT, time.gmtime( self.__protocol.mtime ) )
     if self.__pos == 0 and self.__end == self.__protocol.size:
       head = 'HTTP/1.1 200 OK'
-      if self.__protocol.size != -1:
+      if self.__protocol.size >= 0:
         args[ 'Content-Length' ] = str( self.__protocol.size )
-    elif self.__end != -1:
+    elif self.__end >= 0:
       head = 'HTTP/1.1 206 Partial Content'
       args[ 'Content-Length' ] = str( self.__end - self.__pos )
-      if self.__protocol.size != -1:
+      if self.__protocol.size >= 0:
         args[ 'Content-Range' ] = 'bytes %i-%i/%i' % ( self.__pos, self.__end - 1, self.__protocol.size )
       else:
         args[ 'Content-Range' ] = 'bytes %i-%i/*' % ( self.__pos, self.__end - 1 )
@@ -64,8 +66,10 @@ class DataResponse:
     if Params.VERBOSE > 0:
       print 'Sending', head
       if Params.VERBOSE > 1:
-        for key in args:
-          print '<', key + ':', args[ key ].replace( '\r\n', ' < ' )
+        for item in args.items():
+          line = '%s: %s' % item
+          eol = line[ :78 ].find( '\r' )
+          print '>', eol != -1 and line[ :eol ] + '...' or len( line ) > 80 and line[ :77 ] + '...' or line
 
     self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
 
@@ -138,51 +142,41 @@ class ChunkedDataResponse( DataResponse ):
       self.__protocol.write( self.__recvbuf[ beg:end ] )
       self.__recvbuf = self.__recvbuf[ end+2: ]
     else:
-      self.size = self.__protocol.tell()
-      print 'Connection closed; assuming file size', self.size
+      self.__protocol.size = self.__protocol.tell()
+      print 'Connection closed at byte', self.__protocol.size
       self.Done = not self.cansend()
 
 
-class NotFoundResponse:
+class DirectResponse:
 
   Done = False
+
+  def __init__( self, sendbuf ):
+
+    self.__sendbuf = sendbuf
+
+  def cansend( self ):
+
+    return bool( self.__sendbuf )
+
+  def send( self, sock ):
+
+    bytes = sock.send( self.__sendbuf )
+    self.__sendbuf = self.__sendbuf[ bytes: ]
+    if not self.__sendbuf:
+      self.Done = True
+
+
+class NotFoundResponse( DirectResponse ):
 
   def __init__( self, protocol, request ):
 
-    self.__sendbuf = 'HTTP/1.1 404 Not Found\r\n\r\n'
-
-  def cansend( self ):
-
-    return bool( self.__sendbuf )
-
-  def send( self, sock ):
-
-    bytes = sock.send( self.__sendbuf )
-    self.__sendbuf = self.__sendbuf[ bytes: ]
-    if not self.__sendbuf:
-      self.Done = True
+    DirectResponse.__init__( self, 'HTTP/1.1 404 Not Found\r\n\r\n' )
 
 
-class ExceptionResponse:
+class ExceptionResponse( DirectResponse ):
 
-  Done = False
+  def __init__( self, msg ):
 
-  def __init__( self ):
-
-    head = 'HTTP/1.1 500 Internal Server Error\r\n\r\n'
-    body = traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback )
-
-    self.__sendbuf = head + '\n'.join( body )
-
-    print ''.join( traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback ) ).rstrip()
-
-  def send( self, sock ):
-
-    bytes = sock.send( self.__sendbuf )
-    self.__sendbuf = self.__sendbuf[ bytes: ]
-    if not self.__sendbuf:
-      self.Done = True
-
-  def cansend( self ):
-
-    return bool( self.__sendbuf )
+    DirectResponse.__init__( self, 'HTTP/1.1 500 Internal Server Error\r\n\r\nHTTP Replicator caught an exception: %s' % msg )
+    print 'Exception:', msg

@@ -41,10 +41,11 @@ def transaction( client, address ):
 
     print 'Switching to', protocol.Response.__name__
     response = protocol.Response( protocol, request )
-  except:
-    response = Response.ExceptionResponse()
+    server = protocol.socket()
+  except Exception, msg:
+    print 'Switching to ExceptionResponse'
+    response = Response.ExceptionResponse( msg )
 
-  server = protocol.socket()
   while not response.Done:
     if response.cansend():
       yield fiber.SEND( client, Params.TIMEOUT )

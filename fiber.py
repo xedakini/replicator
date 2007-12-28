@@ -48,6 +48,15 @@ class Fiber:
     finally:
       sys.stdout = stdout
 
+  def throw( self, msg ):
+
+    try:
+      stdout = sys.stdout
+      sys.stdout = self
+      self.__generator.throw( Exception, msg )
+    finally:
+      sys.stdout = stdout
+
   def __repr__( self ):
 
     return '%s:%i' % ( self.state.__class__.__name__, self.__generator.gi_frame.f_lineno )
@@ -113,15 +122,13 @@ class DebugFiber( Fiber ):
   def step( self ):
 
     try:
-      enter = repr( self )
       Fiber.step( self )
-      leave = repr( self )
     except StopIteration:
       print >> self, 'End of fiber.'
     except ( AssertionError, socket.error ), msg:
       print >> self, 'Error:', msg
     else:
-      print >> self, '%s -> %s' % ( enter, leave )
+      print >> self, 'Waiting at', self
 
 
 def spawn( generator, port, debug ):
@@ -153,12 +160,10 @@ def spawn( generator, port, debug ):
         state = fibers[ i ].state
 
         if state and time.time() > state.expire:
-          if isinstance( state, WAIT ):
-            fibers[ i ].step()
-            state = fibers[ i ].state
-          else:
-            print >> fibers[ i ], 'Timed out'
-            state = None
+          if not isinstance( state, WAIT ):
+            fibers[ i ].throw( 'Connection timed out' )
+          fibers[ i ].step()
+          state = fibers[ i ].state
 
         if not state:
           del fibers[ i ]

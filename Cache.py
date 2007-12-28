@@ -50,6 +50,7 @@ class File:
   def open_partial( self, offset ):
 
     print 'Opening file for append at byte', offset
+    self.mtime = os.stat( self.__path + Params.SUFFIX ).st_mtime
     self.__file = open( self.__path + Params.SUFFIX, 'a+' )
     assert offset <= self.tell() < self.size, 'range does not match file in cache'
     self.__file.seek( offset )
@@ -58,8 +59,19 @@ class File:
   def open_full( self ):
 
     print 'Opening file read-only'
+    self.mtime = os.stat( self.__path ).st_mtime
     self.__file = open( self.__path, 'r' )
     self.size = self.tell()
+
+  def remove_full( self ):
+
+    print 'Removing complete file from cache'
+    os.remove( self.__path )
+
+  def remove_partial( self ):
+
+    print 'Removing partial file from cache'
+    os.remove( self.__path + Params.SUFFIX )
 
   def read( self, pos, size ):
 

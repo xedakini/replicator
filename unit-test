@@ -9,19 +9,29 @@ LOG="$BASE.log"
 OUT="$BASE.out"
 
 if [ -z "$1" ]; then
-  echo "Running all tests in sequence:"
-  while [ $((++i)) -le $TESTS ]; do $0 $i; done
+  while [ $((++i)) -le $TESTS ]; do
+    $0 $i
+    echo ========================================================================
+  done
   exit 0
 fi
 
 function exists
 {
-  if test -e $1; then echo OK; else echo ERRO; fi
+  if test -e $1; then echo OK; else echo ERROR; fi
 }
 
 function compare
 {
-  if test `md5 -q $1` == `md5 -q $CACHE/$URL`; then echo OK; else echo ERROR; fi
+  if test ! -e $1; then
+    echo ERROR: 1st file missing
+  elif test ! -e $2; then
+    echo ERROR: 2nd file missing
+  elif test `md5 -q $1` != `md5 -q $2`; then
+    echo ERROR: files not equal
+  else
+    echo OK
+  fi
 }
 
 function logged
@@ -41,7 +51,7 @@ case $1 in
     curl -x localhost:$PORT -o $OUT http://$URL -#
     sleep .5
     echo " * file cached and finalized ........................................... `exists $CACHE/$URL`"
-    echo " * cached and served file are equal .................................... `compare $OUT $CACHE/$URL`"
+    echo " * cached and served file are equal .................................... `compare $CACHE/$URL $OUT`"
     ;;
   2)
     echo "LEAVING PARTIAL FILE IN CACHE"
@@ -59,8 +69,8 @@ case $1 in
     sleep .5
     echo " * first file cached and finalized ..................................... `exists $CACHE/$URL`"
     echo " * second file served from cache ....................................... `logged 'Complete file in cache'`"
-    echo " * cached and first served file are equal .............................. `compare ${OUT}1 $CACHE/$URL`"
-    echo " * cached and second served file are equal ............................. `compare ${OUT}2 $CACHE/$URL`"
+    echo " * cached and first served file are equal .............................. `compare $CACHE/$URL ${OUT}1`"
+    echo " * cached and second served file are equal ............................. `compare $CACHE/$URL ${OUT}2`"
     ;;
   4)
     echo "RESUMING PARTIAL FILE BY CLIENT"
@@ -72,7 +82,7 @@ case $1 in
     sleep .5
     echo " * received complete file .............................................. `logged 'Server sends HTTP/1.1 200 OK'`"
     echo " * served partial file ................................................. `logged 'Sending HTTP/1.1 206 Partial Content'`"
-    echo " * cached and served file are equal .................................... `compare $OUT $CACHE/$URL`"
+    echo " * cached and served file are equal .................................... `compare $CACHE/$URL $OUT`"
     ;;
   5)
     echo "REDOWNLOADING CHANGED FILE"
@@ -83,7 +93,7 @@ case $1 in
     sleep .5
     echo " * detected complete file in cache ..................................... `logged 'Complete file in cache'`"
     echo " * downloading new file ................................................ `logged 'Opening new file'`"
-    echo " * cached and served file are equal .................................... `compare $OUT $CACHE/$URL`"
+    echo " * cached and served file are equal .................................... `compare $CACHE/$URL $OUT`"
     ;;
   6)
     echo "RESUMING PARTIAL UNCHANGED FILE IN CACHE"
@@ -96,7 +106,7 @@ case $1 in
     sleep .5
     echo " * replicator asks for missing part..................................... `logged 'Partial file in cache'`"
     echo " * received partial file ............................................... `logged 'Server sends HTTP/1.1 206 Partial Content'`"
-    echo " * cached and served file are equal .................................... `compare $OUT $CACHE/$URL`"
+    echo " * cached and served file are equal .................................... `compare $CACHE/$URL $OUT`"
     ;;
   7)
     echo "RESUMING PARTIAL CHANGED FILE IN CACHE"
@@ -107,7 +117,7 @@ case $1 in
     sleep .5
     echo " * replicator asks for missing part..................................... `logged 'Partial file in cache'`"
     echo " * received complete file .............................................. `logged 'Server sends HTTP/1.1 200 OK'`"
-    echo " * cached and served file are equal .................................... `compare $OUT $CACHE/$URL`"
+    echo " * cached and served file are equal .................................... `compare $CACHE/$URL $OUT`"
     ;;
   8)
     echo "JOINING DOWNLOADS"
@@ -117,8 +127,16 @@ case $1 in
     curl -x localhost:$PORT -o ${OUT}2 http://$URL -#
     sleep .5
     echo " * downloads are joined ................................................ `logged 'Joined running download'`"
-    echo " * cached and first served file are equal .............................. `compare ${OUT}1 $CACHE/$URL`"
-    echo " * cached and second served file are equal ............................. `compare ${OUT}2 $CACHE/$URL`"
+    echo " * cached and first served file are equal .............................. `compare $CACHE/$URL ${OUT}1`"
+    echo " * cached and second served file are equal ............................. `compare $CACHE/$URL ${OUT}2`"
+    ;;
+  9)
+    echo "CHUNKED DATA TRANSFER"
+    curl -x localhost:$PORT -o $OUT http://jigsaw.w3.org/HTTP/ChunkedScript -#
+    sleep .5
+    echo " * server sends chunked data ........................................... `logged 'Transfer-Encoding: chunked'`"
+    echo " * processing chunked data ............................................. `logged 'Switching to ChunkedDataResponse'`"
+    echo " * cached and served file are equal .................................... `compare $CACHE/jigsaw.w3.org:80/HTTP/ChunkedScript $OUT`"
     ;;
   *)
     echo "Not implemented"

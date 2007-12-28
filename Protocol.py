@@ -6,15 +6,12 @@ DNSCache = {}
 def connect( addr ):
 
   if addr not in DNSCache:
-
-    print 'Quering name server for', addr[ 0 ]
-
+    print 'Quering name server for %s:%i' % addr
     DNSCache[ addr ] = socket.getaddrinfo( addr[ 0 ], addr[ 1 ], Params.FAMILY, socket.SOCK_STREAM )
 
   family, socktype, proto, canonname, sockaddr = DNSCache[ addr ][ 0 ]
 
   print 'Connecting to %s:%i' % sockaddr
-
   sock = socket.socket( family, socktype, proto )
   sock.setblocking( 0 )
   sock.connect_ex( sockaddr )
@@ -61,7 +58,7 @@ class HttpProtocol( Cache.File ):
 
   def __init__( self, request ):
 
-    Cache.File.__init__( self, '%s:%i' % request.addr() + request.path() )
+    Cache.File.__init__( self, '%s:%i/%s' % request.url() )
 
     if Params.STATIC and self.full():
       self.__socket = None
@@ -69,7 +66,7 @@ class HttpProtocol( Cache.File ):
       self.Response = Response.DataResponse
       return
 
-    head = 'GET %s HTTP/1.1' % request.path()
+    head = 'GET /%s HTTP/1.1' % request.url()[ 2 ]
     args = request.args()
     args.pop( 'Accept-Encoding', None )
     args.pop( 'Range', None )
@@ -85,7 +82,7 @@ class HttpProtocol( Cache.File ):
         print 'Complete file in cache: %i bytes, %s' % ( size, mtime )
         args[ 'If-Modified-Since' ] = mtime
 
-    self.__socket = connect( request.addr() )
+    self.__socket = connect( request.url()[ :2 ] )
     self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
     self.__recvbuf = ''
     self.__parse = HttpProtocol.__parse_head
@@ -127,7 +124,7 @@ class HttpProtocol( Cache.File ):
     line = chunk[ :eol ].rstrip()
     if ': ' in line:
       if Params.VERBOSE > 1:
-        print '>', line.rstrip()
+        print '>', len( line ) > 80 and line[ :77 ] + '...' or line
       key, value = line.split( ': ', 1 )
       key = key.title()
       if key in self.__args:
@@ -158,14 +155,13 @@ class HttpProtocol( Cache.File ):
       self.__recvbuf = self.__recvbuf[ bytes: ]
     sock.recv( len( chunk ) - len( self.__recvbuf ) )
 
-    if 'Last-Modified' in self.__args:
-      self.mtime = calendar.timegm( time.strptime( self.__args[ 'Last-Modified' ], Params.TIMEFMT ) )
-
     if self.__status == 200:
 
+      self.open_new()
+      if 'Last-Modified' in self.__args:
+        self.mtime = calendar.timegm( time.strptime( self.__args[ 'Last-Modified' ], Params.TIMEFMT ) )
       if 'Content-Length' in self.__args:
         self.size = int( self.__args[ 'Content-Length' ] )
-      self.open_new()
       if self.__args.pop( 'Transfer-Encoding', None ) == 'chunked':
         self.Response = Response.ChunkedDataResponse
       else:
@@ -190,6 +186,11 @@ class HttpProtocol( Cache.File ):
       self.open_full()
       self.__socket.close()
       self.Response = Response.DataResponse
+
+    elif self.__status == 416 and self.partial():
+
+      self.remove_partial()
+      self.Response = Response.BlindResponse
 
     else:
 
