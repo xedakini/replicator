@@ -42,9 +42,9 @@ def transaction( client, address ):
     print 'Switching to', protocol.Response.__name__
     response = protocol.Response( protocol, request )
     server = protocol.socket()
-  except Exception, msg:
+  except Exception, e:
     print 'Switching to ExceptionResponse'
-    response = Response.ExceptionResponse( msg )
+    response = Response.ExceptionResponse( e, request )
 
   while not response.Done:
     if response.cansend():

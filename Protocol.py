@@ -217,9 +217,15 @@ class FtpProtocol( Cache.File ):
 
   def __init__( self, request ):
 
-    Cache.File.__init__( self, request )
+    Cache.File.__init__( self, '%s:%i/%s' % request.url() )
 
-    self.__socket = request.connect()
+    if Params.STATIC and self.full():
+      self.__socket = None
+      self.open_full()
+      self.Response = Response.DataResponse
+      return
+
+    self.__socket = connect( request.url()[ :2 ] )
     self.__strbuf = ''
 
   def send( self, sock ):

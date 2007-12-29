@@ -104,7 +104,7 @@ class DebugFiber( Fiber ):
 
     Fiber.__init__( self, generator )
 
-    self.__id = '[ 0x%02X ] ' % ( DebugFiber.id % 256 )
+    self.__id = '[ %04X ] ' % ( DebugFiber.id % 65535 )
     self.__newline = True
 
     DebugFiber.id += 1

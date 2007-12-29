@@ -68,8 +68,7 @@ class DataResponse:
       if Params.VERBOSE > 1:
         for item in args.items():
           line = '%s: %s' % item
-          eol = line[ :78 ].find( '\r' )
-          print '>', eol != -1 and line[ :eol ] + '...' or len( line ) > 80 and line[ :77 ] + '...' or line
+          print '>', 0 <= line.find( '\r' ) <= 77 and line[ :line.find( '\r' ) ] + '...' or len( line ) > 80 and line[ :77 ] + '...' or line
 
     self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
 
@@ -107,9 +106,13 @@ class DataResponse:
     chunk = sock.recv( Params.MAXCHUNK )
     if chunk:
       self.__protocol.write( chunk )
-    elif self.__protocol.size == -1:
+    elif self.__protocol.size >= 0:
+      assert self.__protocol.size == self.__protocol.tell(), 'connection closed prematurely'
+      self.Done = not self.cansend()
+    else:
       self.__protocol.size = self.__protocol.tell()
-      print 'Connection closed at size', self.__protocol.size
+      print 'Connection closed at byte', self.__protocol.size
+      self.Done = not self.cansend()
 
     self.Done = not self.__sendbuf and self.__pos >= self.__end >= 0
 
@@ -176,7 +179,17 @@ class NotFoundResponse( DirectResponse ):
 
 class ExceptionResponse( DirectResponse ):
 
-  def __init__( self, msg ):
+  def __init__( self, exception, request ):
 
-    DirectResponse.__init__( self, 'HTTP/1.1 500 Internal Server Error\r\n\r\nHTTP Replicator caught an exception: %s' % msg )
-    print 'Exception:', msg
+    print 'Exception:', exception
+
+    lines = [ 'HTTP/1.1 500 Internal Server Error\r', 'Content-Type: text/plain\r', '\r', 'HTTP Replicator: 500 Internal Server Error', '', 'Requesting:', '' ]
+    head, body = request.recvbuf().split( '\r\n\r\n', 1 )
+    for line in head.splitlines():
+      lines.append( len( line ) > 78 and '  %s...' % line[ :75 ] or '  %s' % line )
+    if body:
+      lines.append( '+ Body: %i bytes' % len( body ) )
+    lines.append( '' )
+    lines.append( 'Exception: %s' % exception )
+
+    DirectResponse.__init__( self, '\n'.join( lines ) )
