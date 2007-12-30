@@ -25,7 +25,7 @@ class BlindProtocol:
 
   def __init__( self, request ):
 
-    self.__socket = connect( request.addr() )
+    self.__socket = connect( request.url()[ :2 ] )
     self.__sendbuf = request.recvbuf()
 
   def socket( self ):
