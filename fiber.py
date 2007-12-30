@@ -5,6 +5,8 @@ class SEND:
 
   def __init__( self, sock, timeout ):
 
+    assert isinstance( sock, socket.socket ), 'SEND: invalid socket: %r' % sock
+    assert isinstance( timeout, ( int, float ) ), 'SEND: invalid timeout: %r' % timeout
     self.fileno = sock.fileno()
     self.expire = timeout > 0 and time.time() + timeout
 
@@ -13,6 +15,8 @@ class RECV:
 
   def __init__( self, sock, timeout ):
 
+    assert isinstance( sock, socket.socket ), 'RECV: invalid socket: %r' % sock
+    assert isinstance( timeout, ( int, float ) ), 'RECV: invalid timeout: %r' % timeout
     self.fileno = sock.fileno()
     self.expire = timeout > 0 and time.time() + timeout
 
@@ -21,7 +25,7 @@ class WAIT:
 
   def __init__( self, timeout = -1 ):
 
-    self.fileno = None
+    assert isinstance( timeout, ( int, float ) ), 'WAIT: invalid timeout: %r' % timeout
     self.expire = timeout > 0 and time.time() + timeout
 
 
@@ -154,7 +158,7 @@ def spawn( generator, port, debug ):
 
       tryrecv = { listener.fileno(): None }
       trysend = {}
-      expire = None
+      expire = False
 
       for i in range( len( fibers ) -1, -1, -1 ):
         state = fibers[ i ].state
@@ -177,14 +181,14 @@ def spawn( generator, port, debug ):
         if not expire or state.expire and state.expire < expire:
           expire = state.expire
 
-      if expire is None:
+      if expire:
+        canrecv, cansend, dummy = select.select( tryrecv, trysend, [], expire - time.time() )
+      else:
         print '[ IDLE ]'
         sys.stdout.flush()
         canrecv, cansend, dummy = select.select( tryrecv, trysend, [] )
         print '[ BUSY ]'
         sys.stdout.flush()
-      else:
-        canrecv, cansend, dummy = select.select( tryrecv, trysend, [], expire - time.time() )
 
       for fileno in canrecv:
         if fileno is listener.fileno():

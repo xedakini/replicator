@@ -54,7 +54,7 @@ for _arg in _args:
     VERBOSE += 1
   elif _arg == '--limit':
     try:
-      LIMIT = float( _args.next() )
+      LIMIT = float( _args.next() ) * 1024
     except:
       sys.exit( 'Error: %s requires a numerical argument' % _arg )
   elif _arg in ('-r', '--root'):

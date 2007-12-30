@@ -21,7 +21,7 @@ class BlindResponse:
 
   def needwait( self ):
 
-    return True
+    return False
 
   def recv( self, sock ):
 

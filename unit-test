@@ -206,10 +206,10 @@ case $1 in
     ;;
   13)
     echo "TEST $1: RATE CONTROL"
-    startserver --limit 10000
+    startserver --limit 10
     curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP
     sleep .5
-    echo " * download speed approximately equal to 10000 ......................... ^^^^^"
+    echo " * download speed approximately equal to 10240 ......................... ^^^^^"
     echo " * cached and served file are equal .................................... `compare $PREFIX.cache/$URL_HTTP $PREFIX.out`"
     stopserver
 esac
