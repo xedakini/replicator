@@ -14,6 +14,7 @@ VERBOSE = 0
 LIMIT = False
 ROOT = os.getcwd() + os.sep
 SUFFIX = '.incomplete'
+LOG = False
 USAGE = '''usage: %(PROG)s [options]
 
 options:
@@ -28,21 +29,23 @@ options:
   -v --verbose       show http headers and other info
      --debug         show traceback info
   -r --root          set cache root directory, default current: %(ROOT)s
-  -d --daemon        run in background''' % locals()
+  -d --daemon LOG    route output to log and detach''' % locals()
 
 for _arg in _args:
 
-  if _arg in ('-h', '--help'):
+  if _arg in ( '-h', '--help' ):
     sys.exit( USAGE )
-  elif _arg in ('-p', '--port'):
+  elif _arg in ( '-p', '--port' ):
     try:
       PORT = int( _args.next() )
       assert PORT > 0
     except:
       sys.exit( 'Error: %s requires a positive numerical argument' % _arg )
-  elif _arg in ('-s', '--static'):
+  elif _arg in ( '-d', '--daemon' ):
+    LOG = _args.next()
+  elif _arg in ( '-s', '--static' ):
     STATIC = True
-  elif _arg in ('-t', '--timeout'):
+  elif _arg in ( '-t', '--timeout' ):
     try:
       TIMEOUT = int( _args.next() )
       assert TIMEOUT > 0
@@ -50,14 +53,14 @@ for _arg in _args:
       sys.exit( 'Error: %s requires a positive numerical argument' % _arg )
   elif _arg == '--debug':
     DEBUG = True
-  elif _arg in ('-v', '--verbose'):
+  elif _arg in ( '-v', '--verbose' ):
     VERBOSE += 1
   elif _arg == '--limit':
     try:
       LIMIT = float( _args.next() ) * 1024
     except:
       sys.exit( 'Error: %s requires a numerical argument' % _arg )
-  elif _arg in ('-r', '--root'):
+  elif _arg in ( '-r', '--root' ):
     try:
       ROOT = os.path.realpath( _args.next() ) + os.sep
       assert os.path.isdir( ROOT )
@@ -65,7 +68,7 @@ for _arg in _args:
       sys.exit( 'Error: %s requires a directory argument' % _arg )
     except:
       sys.exit( 'Error: invalid cache directory %s' % ROOT )
-  elif _arg in ('-6', '--ipv6'):
+  elif _arg in ( '-6', '--ipv6' ):
     FAMILY = socket.AF_UNSPEC
   else:
     sys.exit( 'Error: invalid option %r' % _arg )

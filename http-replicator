@@ -57,4 +57,4 @@ def transaction( client, address ):
   print 'Done'
 
 
-fiber.spawn( transaction, Params.PORT, Params.DEBUG )
+fiber.spawn( transaction, Params.PORT, Params.DEBUG, Params.LOG )

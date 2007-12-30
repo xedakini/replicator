@@ -5,35 +5,29 @@ class SEND:
 
   def __init__( self, sock, timeout ):
 
-    assert isinstance( sock, socket.socket ), 'SEND: invalid socket: %r' % sock
-    assert isinstance( timeout, ( int, float ) ), 'SEND: invalid timeout: %r' % timeout
     self.fileno = sock.fileno()
-    self.expire = timeout > 0 and time.time() + timeout
+    self.expire = time.time() + timeout
 
 
 class RECV:
 
   def __init__( self, sock, timeout ):
 
-    assert isinstance( sock, socket.socket ), 'RECV: invalid socket: %r' % sock
-    assert isinstance( timeout, ( int, float ) ), 'RECV: invalid timeout: %r' % timeout
     self.fileno = sock.fileno()
-    self.expire = timeout > 0 and time.time() + timeout
+    self.expire = time.time() + timeout
 
 
 class WAIT:
 
-  def __init__( self, timeout = -1 ):
+  def __init__( self, timeout = None ):
 
-    assert isinstance( timeout, ( int, float ) ), 'WAIT: invalid timeout: %r' % timeout
-    self.expire = timeout > 0 and time.time() + timeout
+    self.expire = timeout and time.time() + timeout or None
 
 
 class Fiber:
 
   write = sys.stdout.write
   writelines = sys.stdout.writelines
-  softspace = 0
 
   def __init__( self, generator ):
 
@@ -71,16 +65,16 @@ class GatherFiber( Fiber ):
   def __init__( self, generator ):
 
     Fiber.__init__( self, generator )
-    self.__lines = [ time.ctime() + '\n' ]
-    self.__buffer = ''
+    self.__chunks = [ time.ctime() + '\n' ]
+    self.__newline = True
     self.__start = time.time()
 
   def write( self, string ):
 
-    self.__buffer += string
-    if self.softspace:
-      self.__lines.append( '%6.2f  %s' % ( time.time() - self.__start, self.__buffer ) )
-      self.__buffer = ''
+    if self.__newline:
+      self.__chunks.append( '%6.2f  ' % ( time.time() - self.__start ) )
+    self.__chunks.append( string )
+    self.__newline = string.endswith( '\n' )
 
   def step( self ):
 
@@ -93,11 +87,13 @@ class GatherFiber( Fiber ):
     except ( AssertionError, socket.error ), msg:
       print >> self, 'Error:', msg
     except:
-      print >> self, ''.join( traceback.format_exception( sys.exc_type, sys.exc_value, sys.exc_traceback ) ).rstrip()
+      traceback.print_exc( file=self )
 
   def __del__( self ):
 
-    Fiber.writelines( self.__lines )
+    Fiber.writelines( self.__chunks )
+    if not self.__newline:
+      Fiber.write( '\n' )
 
 
 class DebugFiber( Fiber ):
@@ -107,10 +103,8 @@ class DebugFiber( Fiber ):
   def __init__( self, generator ):
 
     Fiber.__init__( self, generator )
-
     self.__id = '[ %04X ] ' % ( DebugFiber.id % 65535 )
     self.__newline = True
-
     DebugFiber.id += 1
 
     print >> self, 'New fiber'
@@ -119,9 +113,8 @@ class DebugFiber( Fiber ):
 
     if self.__newline:
       Fiber.write( self.__id )
-
     Fiber.write( string )
-    self.__newline = self.softspace
+    self.__newline = string.endswith( '\n' )
 
   def step( self ):
 
@@ -129,19 +122,64 @@ class DebugFiber( Fiber ):
       Fiber.step( self )
     except StopIteration:
       print >> self, 'End of fiber.'
-    except ( AssertionError, socket.error ), msg:
-      print >> self, 'Error:', msg
+    except:
+      traceback.print_exc( file=self )
     else:
       print >> self, 'Waiting at', self
 
 
-def spawn( generator, port, debug ):
+def fork( output ):
 
-  listener = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
-  listener.setblocking( 0 )
-  listener.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, listener.getsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR ) | 1 )
-  listener.bind( ( '', port ) )
-  listener.listen( 5 )
+  try:
+    log = open( output, 'w' )
+    nul = open( '/dev/null', 'r' )
+    pid = os.fork()
+  except IOError, e:
+    print 'error: failed to open', e.filename
+    sys.exit( 1 )
+  except OSError, e:
+    print 'error: failed to fork process:', e.strerror
+    sys.exit( 1 )
+  except Exception, e:
+    print 'error:', e
+    sys.exit( 1 )
+
+  if pid:
+    cpid, status = os.wait()
+    sys.exit( status >> 8 )
+
+  try: 
+    os.chdir( os.sep )
+    os.setsid() 
+    os.umask( 0 )
+    pid = os.fork()
+  except Exception, e: 
+    print 'error:', e
+    sys.exit( 1 )
+
+  if pid:
+    print pid
+    sys.exit( 0 )
+
+  os.dup2( log.fileno(), sys.stdout.fileno() )
+  os.dup2( log.fileno(), sys.stderr.fileno() )
+  os.dup2( nul.fileno(), sys.stdin.fileno()  )
+
+
+def spawn( generator, port, debug, log ):
+
+  try:
+    listener = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
+    listener.setblocking( 0 )
+    listener.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, listener.getsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR ) | 1 )
+    listener.bind( ( '', port ) )
+    listener.listen( 5 )
+  except Exception, e:
+    print 'error: failed to create socket:', e
+    sys.exit( 1 )
+
+  if log:
+    fork( log )
 
   if debug:
     myFiber = DebugFiber
@@ -149,7 +187,6 @@ def spawn( generator, port, debug ):
     myFiber = GatherFiber
 
   print time.strftime( '%D' ), 'HTTP Replicator started'
-
   try:
 
     fibers = []
@@ -158,7 +195,7 @@ def spawn( generator, port, debug ):
 
       tryrecv = { listener.fileno(): None }
       trysend = {}
-      expire = False
+      timeout = None
 
       for i in range( len( fibers ) -1, -1, -1 ):
         state = fibers[ i ].state
@@ -177,18 +214,21 @@ def spawn( generator, port, debug ):
           tryrecv[ state.fileno ] = fibers[ i ]
         elif isinstance( state, SEND ):
           trysend[ state.fileno ] = fibers[ i ]
-        
-        if not expire or state.expire and state.expire < expire:
-          expire = state.expire
+        elif state.expire is None:
+          continue
 
-      if expire:
-        canrecv, cansend, dummy = select.select( tryrecv, trysend, [], expire - time.time() )
-      else:
+        mytimeout = max( time.time() - state.expire, 0 )
+        if mytimeout < timeout or timeout is None:
+          timeout = mytimeout
+
+      if timeout is None:
         print '[ IDLE ]'
         sys.stdout.flush()
         canrecv, cansend, dummy = select.select( tryrecv, trysend, [] )
         print '[ BUSY ]'
         sys.stdout.flush()
+      else:
+        canrecv, cansend, dummy = select.select( tryrecv, trysend, [], timeout )
 
       for fileno in canrecv:
         if fileno is listener.fileno():
@@ -200,6 +240,8 @@ def spawn( generator, port, debug ):
 
   except KeyboardInterrupt:
     print time.strftime( '%D' ), 'HTTP Replicator terminated'
+    sys.exit( 0 )
   except:
     print time.strftime( '%D' ), 'HTTP Replicator crashed'
-    raise
+    traceback.print_exc( file=sys.stdout )
+    sys.exit( 1 )

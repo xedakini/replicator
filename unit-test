@@ -2,12 +2,13 @@
 
 TESTS=13
 PORT=8090
+PID="/tmp/replicator.$PORT"
 PREFIX="/tmp/unittest$1"
 URL_HTTP="www.w3.org:80/Protocols/HTTP/1.1/rfc2616.txt.gz"
 URL_CHUNKED="jigsaw.w3.org:80/HTTP/ChunkedScript"
 URL_FTP="ftp.debian.org:21/debian/doc/FAQ/debian-faq.en.pdf.gz"
 
-if [ -z "$1" ]; then
+if test -z "$1"; then
   while [ $((++i)) -le $TESTS ]; do
     $0 $i
     echo ========================================================================
@@ -17,21 +18,28 @@ fi
 
 function startserver
 {
-  set -m
   rm -rf $PREFIX.*
   mkdir $PREFIX.cache
-  ./http-replicator -p $PORT -r $PREFIX.cache -v -v $@ > $PREFIX.log &
-  sleep .5
+  if ! ./http-replicator -p $PORT -r $PREFIX.cache -v -v $@ -d $PREFIX.log > $PID; then
+    cat $PID
+    rm $PID
+    exit 1
+  fi
 }
 
 function stopserver
 {
-  kill -int %-
+  kill -int `cat $PID`
+  rm $PID
 }
 
 function exists
 {
-  if test -e $1; then echo OK; else echo ERROR; fi
+  if test -e $1; then
+    echo OK;
+  else
+    echo ERROR;
+  fi
 }
 
 function compare
@@ -49,7 +57,11 @@ function compare
 
 function logged
 {
-  if grep -q "$1" $PREFIX.log; then echo OK; else echo ERROR; fi
+  if grep -q "$1" $PREFIX.log; then
+    echo OK;
+  else
+    echo ERROR;
+  fi
 }
 
 case $1 in
@@ -69,7 +81,7 @@ case $1 in
     startserver
     curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -# &
     sleep 1
-    kill -int %+
+    kill %
     echo
     sleep .5
     echo " * file cached, not finalized .......................................... `exists $PREFIX.cache/$URL_HTTP.incomplete`"
@@ -92,7 +104,7 @@ case $1 in
     startserver
     curl -o $PREFIX.out http://$URL_HTTP -# &
     sleep 1
-    kill -int %+
+    kill %
     echo
     sleep .5
     curl -x localhost:$PORT -C - -o $PREFIX.out http://$URL_HTTP -#
@@ -120,7 +132,7 @@ case $1 in
     startserver
     curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -# &
     sleep 1
-    kill -int %+
+    kill %
     echo
     sleep .5
     curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -#
@@ -195,7 +207,7 @@ case $1 in
     startserver
     curl -x localhost:$PORT -o $PREFIX.out ftp://$URL_FTP -# &
     sleep 1
-    kill -int %+
+    kill %
     echo
     sleep .5
     curl -x localhost:$PORT -o $PREFIX.out ftp://$URL_FTP -#
