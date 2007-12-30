@@ -5,8 +5,10 @@ DNSCache = {}
 
 def connect( addr ):
 
+  assert Params.ONLINE, 'operating in off-line mode'
   if addr not in DNSCache:
-    print 'Quering name server for %s:%i' % addr
+    if Params.VERBOSE:
+      print 'Requesting address info for %s:%i' % addr
     DNSCache[ addr ] = socket.getaddrinfo( addr[ 0 ], addr[ 1 ], Params.FAMILY, socket.SOCK_STREAM )
 
   family, socktype, proto, canonname, sockaddr = DNSCache[ addr ][ 0 ]
@@ -61,6 +63,7 @@ class HttpProtocol( Cache.File ):
     Cache.File.__init__( self, '%s:%i/%s' % request.url() )
 
     if Params.STATIC and self.full():
+      print 'Static mode; serving file directly from cache'
       self.__socket = None
       self.open_full()
       self.Response = Response.DataResponse

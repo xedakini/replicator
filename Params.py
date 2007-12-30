@@ -8,6 +8,7 @@ TIMEFMT = '%a, %d %b %Y %H:%M:%S GMT'
 MAXCHUNK = 1448 # maximum lan packet?
 FAMILY = socket.AF_INET
 STATIC = False
+ONLINE = True
 TIMEOUT = 15
 DEBUG = False
 VERBOSE = 0
@@ -21,6 +22,7 @@ options:
   -h --help          show this help message and exit
   -p --port PORT     listen on this port for incoming connections, default %(PORT)i
   -s --static        static mode; assume files never change
+     --offline       offline mode; never connect to server
   -t --timeout SEC   break connection after so many seconds of inactivity, default %(TIMEOUT)i
      --forward       forward requests to a second proxy server
   -6 --ipv6          try ipv6 addresses if available
@@ -44,6 +46,9 @@ for _arg in _args:
   elif _arg in ( '-d', '--daemon' ):
     LOG = _args.next()
   elif _arg in ( '-s', '--static' ):
+    STATIC = True
+  elif _arg == '--offline':
+    ONLINE = False
     STATIC = True
   elif _arg in ( '-t', '--timeout' ):
     try:

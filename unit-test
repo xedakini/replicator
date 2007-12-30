@@ -224,4 +224,23 @@ case $1 in
     echo " * download speed approximately equal to 10240 ......................... ^^^^^"
     echo " * cached and served file are equal .................................... `compare $PREFIX.cache/$URL_HTTP $PREFIX.out`"
     stopserver
+    ;;
+  14)
+    echo "TEST $1: STATIC MODE"
+    startserver --static
+    curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -#
+    curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -#
+    sleep .5
+    echo " * serving directly from cache withou consulting server ................ `logged 'Static mode; serving file directly from cache'`"
+    echo " * cached and served file are equal .................................... `compare $PREFIX.cache/$URL_HTTP $PREFIX.out`"
+    stopserver
+    ;;
+  15)
+    echo "TEST $1: OFF-LINE MODE"
+    startserver --offline
+    curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -#
+    sleep .5
+    echo " * refusing to connect to server ....................................... `logged 'Exception: operating in off-line mode'`"
+    stopserver
+    ;;
 esac
