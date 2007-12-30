@@ -11,7 +11,7 @@ STATIC = False
 TIMEOUT = 15
 DEBUG = False
 VERBOSE = 0
-LIMIT = 0
+LIMIT = False
 ROOT = os.getcwd() + os.sep
 SUFFIX = '.incomplete'
 USAGE = '''usage: %(PROG)s [options]
@@ -54,7 +54,7 @@ for _arg in _args:
     VERBOSE += 1
   elif _arg == '--limit':
     try:
-      LIMIT = 1024 * float( _args.next() )
+      LIMIT = float( _args.next() )
     except:
       sys.exit( 'Error: %s requires a numerical argument' % _arg )
   elif _arg in ('-r', '--root'):

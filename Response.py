@@ -9,21 +9,23 @@ class BlindResponse:
 
     self.__sendbuf = protocol.recvbuf()
 
-  def cansend( self ):
+  def hasdata( self ):
 
     return bool( self.__sendbuf )
 
   def send( self, sock ):
 
+    assert not self.Done
     bytes = sock.send( self.__sendbuf )
     self.__sendbuf = self.__sendbuf[ bytes: ]
 
-  def canrecv( self ):
+  def needwait( self ):
 
     return True
 
   def recv( self, sock ):
 
+    assert not self.Done
     chunk = sock.recv( Params.MAXCHUNK )
     if chunk:
       self.__sendbuf += chunk
@@ -73,8 +75,10 @@ class DataResponse:
           print '> %s: %s' % item
 
     self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
+    if Params.LIMIT:
+      self.__nextrecv = 0
 
-  def cansend( self ):
+  def hasdata( self ):
 
     if self.__sendbuf:
       return True
@@ -87,6 +91,7 @@ class DataResponse:
 
   def send( self, sock ):
 
+    assert not self.Done
     if self.__sendbuf:
       bytes = sock.send( self.__sendbuf )
       self.__sendbuf = self.__sendbuf[ bytes: ]
@@ -98,15 +103,18 @@ class DataResponse:
       self.__pos += sock.send( chunk )
     self.Done = not self.__sendbuf and self.__pos >= self.__end >= 0
 
-  def canrecv( self ):
+  def needwait( self ):
 
-    return True
+    return Params.LIMIT and max( self.__nextrecv - time.time(), 0 )
 
   def recv( self, sock ):
 
+    assert not self.Done
     chunk = sock.recv( Params.MAXCHUNK )
     if chunk:
       self.__protocol.write( chunk )
+      if Params.LIMIT:
+        self.__nextrecv = time.time() + len( chunk ) / Params.LIMIT
     else:
       if self.__protocol.size >= 0:
         assert self.__protocol.size == self.__protocol.tell(), 'connection closed prematurely'
@@ -128,6 +136,7 @@ class ChunkedDataResponse( DataResponse ):
 
   def recv( self, sock ):
 
+    assert not self.Done
     chunk = sock.recv( Params.MAXCHUNK )
     self.__recvbuf += chunk
     beg = self.__recvbuf.find( '\n' ) + 1
@@ -148,7 +157,7 @@ class ChunkedDataResponse( DataResponse ):
     else:
       self.__protocol.size = self.__protocol.tell()
       print 'Connection closed at byte', self.__protocol.size
-      self.Done = not self.cansend()
+      self.Done = not self.hasdata()
 
 
 class DirectResponse:
@@ -159,16 +168,25 @@ class DirectResponse:
 
     self.__sendbuf = sendbuf
 
-  def cansend( self ):
+  def hasdata( self ):
 
     return bool( self.__sendbuf )
 
   def send( self, sock ):
 
+    assert not self.Done
     bytes = sock.send( self.__sendbuf )
     self.__sendbuf = self.__sendbuf[ bytes: ]
     if not self.__sendbuf:
       self.Done = True
+
+  def needwait( self ):
+
+    return False
+
+  def recv( self ):
+
+    raise AssertionError
 
 
 class NotFoundResponse( DirectResponse ):

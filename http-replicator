@@ -45,14 +45,14 @@ def transaction( client, address ):
     response = Response.ExceptionResponse( e, request )
 
   while not response.Done:
-    if response.cansend():
+    if response.hasdata():
       yield fiber.SEND( client, Params.TIMEOUT )
       response.send( client )
-    elif response.canrecv():
+    elif response.needwait():
+      yield fiber.WAIT( response.needwait() )
+    else:
       yield fiber.RECV( server, Params.TIMEOUT )
       response.recv( server )
-    else:
-      yield fiber.WAIT( .5 )
 
   print 'Done'
 
