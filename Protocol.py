@@ -172,7 +172,7 @@ class HttpProtocol( Cache.File ):
 
     elif self.__status == 206 and self.partial():
 
-      range = self.__args.get( 'Content-Range', 'none specified' )
+      range = self.__args.pop( 'Content-Range', 'none specified' )
       assert range.startswith( 'bytes ' ), 'invalid content-range: %s' % range
       range, size = range[ 6: ].split( '/' )
       beg, end = range.split( '-' )

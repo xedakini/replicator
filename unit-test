@@ -1,23 +1,23 @@
 #! /bin/bash
 
-TESTS=13
 PORT=8090
-PID="/tmp/replicator.$PORT"
-PREFIX="/tmp/unittest$1"
-URL_HTTP="www.w3.org:80/Protocols/HTTP/1.1/rfc2616.txt.gz"
+NUM="$1"
+PREFIX="/tmp/unittest$NUM"
+URL_HTTP="www.w3.org:80/Protocols/HTTP/1.1/rfc2616bis/draft-lafon-rfc2616bis-03.txt"
 URL_CHUNKED="jigsaw.w3.org:80/HTTP/ChunkedScript"
 URL_FTP="ftp.debian.org:21/debian/doc/FAQ/debian-faq.en.pdf.gz"
+PID="/tmp/unittest.$PORT"
 
 if test -z "$1"; then
-  while [ $((++i)) -le $TESTS ]; do
-    $0 $i
-    echo ========================================================================
-  done
+  while $0 $((++i)); do true; done
   exit 0
 fi
 
+########## AUXILIARY FUNCTIONS ################################################
+
 function startserver
 {
+  test -e $PID && kill -int `cat $PID`
   rm -rf $PREFIX.*
   mkdir $PREFIX.cache
   if ! ./http-replicator -p $PORT -r $PREFIX.cache -v -v $@ -d $PREFIX.log > $PID; then
@@ -27,220 +27,263 @@ function startserver
   fi
 }
 
+if which wget > /dev/null; then
+  function download
+  {
+    if test -e $PREFIX.$2; then
+      WGETARGS="-c"
+    fi
+    wget -O $PREFIX.$2 $1 $WGETARGS 1>&2
+  }
+elif which curl > /dev/null; then
+  function download
+  {
+    if test -e $PREFIX.$2; then
+      CURLARGS="-C -"
+    fi
+    curl -o $PREFIX.$2 $CURLARGS $1 1>&2
+  }
+else
+  echo "error: no download tool available"
+  exit 1
+fi
+
+function abort
+{
+  sleep $1
+  if kill %%; then
+    echo
+    sleep 1
+  else
+    echo "error: download finished unexpectedly soon"
+    exit 1
+  fi
+}
+
+function touchfile
+{
+  mkdir -p $PREFIX.$1
+  rmdir $PREFIX.$1
+  touch $PREFIX.$1 $@
+}
+
+function summary
+{
+  sleep .5
+  echo "============================================================================="
+  echo " UNIT-TEST $NUM: $1"
+  echo " ---------------------------------------------------------------------------"
+}
+
+function check
+{
+  printf " * %-67s %5s %s\n" "$1" "$2" "$3"
+}
+
+function check_exists
+{
+  if test -e $PREFIX.$2; then
+    check "$1" OK
+  else
+    check "$1" ERROR
+  fi
+}
+
+if which md5 > /dev/null; then
+  function checksum
+  {
+    md5 -q $1
+  }
+elif which md5sum cut > /dev/null; then
+  function checksum
+  {
+    md5sum $1 | cut -d ' ' -f 1
+  }
+else
+  echo "error: no checksum tool available"
+  exit 1
+fi
+
+function check_equal
+{
+  if test ! -e $PREFIX.$2; then
+    check "$1" ERROR "1st file missing" 
+  elif test ! -e $PREFIX.$3; then
+    check "$1" ERROR "2nd file missing" 
+  elif test `checksum $PREFIX.$2` != `checksum $PREFIX.$3`; then
+    check "$1" ERROR "files not equal"
+  else
+    check "$1" OK
+  fi
+}
+
+function check_log
+{
+  if grep -q "$2" $PREFIX.log; then
+    check "$1" OK
+  else
+    check "$1" ERROR
+  fi
+}
+
 function stopserver
 {
-  kill -int `cat $PID`
-  rm $PID
-}
-
-function exists
-{
-  if test -e $1; then
-    echo OK;
-  else
-    echo ERROR;
+  echo "============================================================================="
+  echo
+  if test -e $PID; then
+    kill -int `cat $PID`
+    rm $PID
   fi
 }
 
-function compare
-{
-  if test ! -e $1; then
-    echo ERROR: 1st file missing
-  elif test ! -e $2; then
-    echo ERROR: 2nd file missing
-  elif test `md5 -q $1` != `md5 -q $2`; then
-    echo ERROR: files not equal
-  else
-    echo OK
-  fi
-}
+########## UNIT TESTS #########################################################
 
-function logged
-{
-  if grep -q "$1" $PREFIX.log; then
-    echo OK;
-  else
-    echo ERROR;
-  fi
-}
-
+set -m
 case $1 in
   1)
-    echo "TEST $1: DOWNLOADING NEW FILE"
     startserver
-    curl -o $PREFIX.out1 http://$URL_HTTP -#
-    curl -x localhost:$PORT -o $PREFIX.out2 http://$URL_HTTP -#
-    sleep .5
-    echo " * file cached and finalized ........................................... `exists $PREFIX.cache/$URL_HTTP`"
-    echo " * separate download and served file are equal ......................... `compare $PREFIX.out1 $PREFIX.out2`"
-    echo " * cached and served file are equal .................................... `compare $PREFIX.cache/$URL_HTTP $PREFIX.out2`"
+    download http://$URL_HTTP out1
+    http_proxy=localhost:$PORT download http://$URL_HTTP out2
+    summary "DOWNLOADING NEW FILE"
+    check_exists "file cached and finalized" cache/$URL_HTTP
+    check_equal "separate download and served file are equal" out1 out2
+    check_equal "cached and served file are equal" cache/$URL_HTTP out2
     stopserver
     ;;
   2)
-    echo "TEST $1: LEAVING PARTIAL FILE IN CACHE"
     startserver
-    curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -# &
-    sleep 1
-    kill %
-    echo
-    sleep .5
-    echo " * file cached, not finalized .......................................... `exists $PREFIX.cache/$URL_HTTP.incomplete`"
+    http_proxy=localhost:$PORT download http://$URL_HTTP out & abort 1
+    summary "LEAVING PARTIAL FILE IN CACHE"
+    check_exists "file cached, not finalized" cache/$URL_HTTP.incomplete
     stopserver
     ;;
   3)
-    echo "TEST $1: SERVING FILE FROM CACHE"
     startserver
-    curl -x localhost:$PORT -o $PREFIX.out1 http://$URL_HTTP -#
-    curl -x localhost:$PORT -o $PREFIX.out2 http://$URL_HTTP -#
-    sleep .5
-    echo " * first file cached and finalized ..................................... `exists $PREFIX.cache/$URL_HTTP`"
-    echo " * second file served from cache ....................................... `logged 'Complete file in cache'`"
-    echo " * cached and first served file are equal .............................. `compare $PREFIX.cache/$URL_HTTP $PREFIX.out1`"
-    echo " * cached and second served file are equal ............................. `compare $PREFIX.cache/$URL_HTTP $PREFIX.out2`"
+    http_proxy=localhost:$PORT download http://$URL_HTTP out1
+    http_proxy=localhost:$PORT download http://$URL_HTTP out2
+    summary "SERVING FILE FROM CACHE"
+    check_exists "first file cached and finalized" cache/$URL_HTTP
+    check_log "second file served from cache" "Complete file in cache"
+    check_equal "cached and first served file are equal" cache/$URL_HTTP out1
+    check_equal "cached and second served file are equal" cache/$URL_HTTP out2
     stopserver
     ;;
   4)
-    echo "TEST $1: RESUMING PARTIAL FILE BY CLIENT"
     startserver
-    curl -o $PREFIX.out http://$URL_HTTP -# &
-    sleep 1
-    kill %
-    echo
-    sleep .5
-    curl -x localhost:$PORT -C - -o $PREFIX.out http://$URL_HTTP -#
-    sleep .5
-    echo " * received complete file .............................................. `logged 'Server sends HTTP/1.1 200 OK'`"
-    echo " * served partial file ................................................. `logged 'Sending HTTP/1.1 206 Partial Content'`"
-    echo " * cached and served file are equal .................................... `compare $PREFIX.cache/$URL_HTTP $PREFIX.out`"
+    download http://$URL_HTTP out & abort 1
+    http_proxy=localhost:$PORT download http://$URL_HTTP out
+    summary "RESUMING PARTIAL FILE BY CLIENT"
+    check_log "received complete file" "Server sends HTTP/1.1 200 OK"
+    check_log "served partial file" "Sending HTTP/1.1 206 Partial Content"
+    check_equal "cached and served file are equal" cache/$URL_HTTP out
     stopserver
     ;;
   5)
-    echo "TEST $1: REDOWNLOADING CHANGED FILE"
     startserver
-    mkdir -p $PREFIX.cache/$URL_HTTP
-    rmdir $PREFIX.cache/$URL_HTTP
-    touch -m -t 190112140000 $PREFIX.cache/$URL_HTTP
-    curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -#
-    sleep .5
-    echo " * detected complete file in cache ..................................... `logged 'Complete file in cache'`"
-    echo " * downloading new file ................................................ `logged 'Opening new file'`"
-    echo " * cached and served file are equal .................................... `compare $PREFIX.cache/$URL_HTTP $PREFIX.out`"
+    touchfile cache/$URL_HTTP -m -t 190112140000 
+    http_proxy=localhost:$PORT download http://$URL_HTTP out
+    summary "REDOWNLOADING CHANGED FILE"
+    check_log "detected complete file in cache" "Complete file in cache"
+    check_log "downloading new file" "Opening new file"
+    check_equal "cached and served file are equal" cache/$URL_HTTP out
     stopserver
     ;;
   6)
-    echo "TEST $1: RESUMING PARTIAL UNCHANGED FILE IN CACHE"
-    startserver
-    curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -# &
-    sleep 1
-    kill %
-    echo
-    sleep .5
-    curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -#
-    sleep .5
-    echo " * replicator asks for missing part..................................... `logged 'Partial file in cache'`"
-    echo " * received partial file ............................................... `logged 'Server sends HTTP/1.1 206 Partial Content'`"
-    echo " * cached and served file are equal .................................... `compare $PREFIX.cache/$URL_HTTP $PREFIX.out`"
+    startserver --debug
+    http_proxy=localhost:$PORT download http://$URL_HTTP out1 & abort 1
+    http_proxy=localhost:$PORT download http://$URL_HTTP out2
+    summary "RESUMING PARTIAL UNCHANGED FILE IN CACHE"
+    check_log "replicator asks for missing part" "Partial file in cache"
+    check_log "received partial file" "Server sends HTTP/1.1 206 Partial Content"
+    check_equal "cached and served file are equal" cache/$URL_HTTP out2
     stopserver
     ;;
   7)
-    echo "TEST $1: RESUMING PARTIAL CHANGED FILE IN CACHE"
     startserver
-    mkdir -p $PREFIX.cache/$URL_HTTP
-    rmdir $PREFIX.cache/$URL_HTTP
-    ps aux > $PREFIX.cache/$URL_HTTP.incomplete
-    curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -#
-    sleep .5
-    echo " * replicator asks for missing part..................................... `logged 'Partial file in cache'`"
-    echo " * received complete file .............................................. `logged 'Server sends HTTP/1.1 200 OK'`"
-    echo " * cached and served file are equal .................................... `compare $PREFIX.cache/$URL_HTTP $PREFIX.out`"
+    touchfile cache/$URL_HTTP.incomplete
+    http_proxy=localhost:$PORT download http://$URL_HTTP out
+    summary "RESUMING PARTIAL CHANGED FILE IN CACHE"
+    check_log "replicator asks for missing part" "Partial file in cache"
+    check_log "received complete file" "Server sends HTTP/1.1 200 OK"
+    check_equal "cached and served file are equal" cache/$URL_HTTP out
     stopserver
     ;;
   8)
-    echo "TEST $1: JOINING DOWNLOADS"
     startserver
-    echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%% FIRST DOWNLOAD %%%%%%%%%%%%%%%%%%%%%%%%%%%%"
-    curl -x localhost:$PORT -o $PREFIX.out1 http://$URL_HTTP -s &
-    sleep 1
-    curl -x localhost:$PORT -o $PREFIX.out2 http://$URL_HTTP -#
-    sleep .5
-    echo " * downloads are joined ................................................ `logged 'Joined running download'`"
-    echo " * cached and first served file are equal .............................. `compare $PREFIX.cache/$URL_HTTP $PREFIX.out1`"
-    echo " * cached and second served file are equal ............................. `compare $PREFIX.cache/$URL_HTTP $PREFIX.out2`"
+    http_proxy=localhost:$PORT download http://$URL_HTTP out1 > /dev/null & sleep 1
+    http_proxy=localhost:$PORT download http://$URL_HTTP out2
+    summary "JOINING DOWNLOADS"
+    check_log "downloads are joined" "Joined running download"
+    check_equal "cached and first served file are equal" cache/$URL_HTTP out1
+    check_equal "cached and second served file are equal" cache/$URL_HTTP out2
     stopserver
     ;;
   9)
-    echo "TEST $1: DOWNLOADING NEW FILE, CHUNKED TRANSFER"
     startserver
-    curl -o $PREFIX.out1 http://$URL_CHUNKED -#
-    curl -x localhost:$PORT -o $PREFIX.out2 http://$URL_CHUNKED -#
-    sleep .5
-    echo " * separate download and served file are equal ......................... `compare $PREFIX.out1 $PREFIX.out2`"
-    echo " * server sends chunked data ........................................... `logged 'Transfer-Encoding: chunked'`"
-    echo " * processing chunked data ............................................. `logged 'Switching to ChunkedDataResponse'`"
-    echo " * cached and served file are equal .................................... `compare $PREFIX.cache/$URL_CHUNKED $PREFIX.out2`"
+    download http://$URL_CHUNKED out1
+    http_proxy=localhost:$PORT download http://$URL_CHUNKED out2
+    summary "DOWNLOADING NEW FILE, CHUNKED TRANSFER"
+    check_equal "separate download and served file are equal" out1 out2
+    check_log "server sends chunked data" "Transfer-Encoding: chunked"
+    check_log "processing chunked data" "Switching to ChunkedDataResponse"
+    check_equal "cached and served file are equal" cache/$URL_CHUNKED out2
     stopserver
     ;;
   10)
-    echo "TEST $1: DOWNLOADING NEW FILE, FTP TRANSFER"
     startserver
-    curl -o $PREFIX.out1 ftp://$URL_FTP -#
-    curl -x localhost:$PORT -o $PREFIX.out2 ftp://$URL_FTP -#
-    sleep .5
-    echo " * separate download and served file are equal ......................... `compare $PREFIX.out1 $PREFIX.out2`"
-    echo " * cached and served file are equal .................................... `compare $PREFIX.cache/$URL_FTP $PREFIX.out2`"
+    download ftp://$URL_FTP out1
+    ftp_proxy=localhost:$PORT download ftp://$URL_FTP out2
+    summary "DOWNLOADING NEW FILE, FTP TRANSFER"
+    check_equal "separate download and served file are equal" out1 out2
+    check_equal "cached and served file are equal" cache/$URL_FTP out2
     stopserver
     ;;
   11)
-    echo "TEST $1: SERVING FILE FROM CACHE, FTP TRANSFER"
     startserver
-    curl -x localhost:$PORT -o $PREFIX.out1 ftp://$URL_FTP -#
-    curl -x localhost:$PORT -o $PREFIX.out2 ftp://$URL_FTP -#
-    sleep .5
-    echo " * first file cached and finalized ..................................... `exists $PREFIX.cache/$URL_FTP`"
-    echo " * second file served from cache ....................................... `logged 'Serving complete file from cache'`"
-    echo " * cached and first served file are equal .............................. `compare $PREFIX.cache/$URL_FTP $PREFIX.out1`"
-    echo " * cached and second served file are equal ............................. `compare $PREFIX.cache/$URL_FTP $PREFIX.out2`"
+    ftp_proxy=localhost:$PORT download ftp://$URL_FTP out1
+    ftp_proxy=localhost:$PORT download ftp://$URL_FTP out2
+    summary "SERVING FILE FROM CACHE, FTP TRANSFER"
+    check_exists "first file cached and finalized" cache/$URL_FTP
+    check_log "second file served from cache" "Serving complete file from cache"
+    check_equal "cached and first served file are equal" cache/$URL_FTP out1
+    check_equal "cached and second served file are equal" cache/$URL_FTP out2
     stopserver
     ;;
   12)
-    echo "TEST $1: RESUMING PARTIAL UNCHANGED FILE IN CACHE, FTP TRANSFER"
     startserver
-    curl -x localhost:$PORT -o $PREFIX.out ftp://$URL_FTP -# &
-    sleep 1
-    kill %
-    echo
-    sleep .5
-    curl -x localhost:$PORT -o $PREFIX.out ftp://$URL_FTP -#
-    sleep .5
-    echo " * replicator resumes file ............................................. `logged 'Resuming partial file in cache'`"
-    echo " * cached and served file are equal .................................... `compare $PREFIX.cache/$URL_FTP $PREFIX.out`"
+    ftp_proxy=localhost:$PORT download ftp://$URL_FTP out1 & abort 1
+    ftp_proxy=localhost:$PORT download ftp://$URL_FTP out2
+    summary "RESUMING PARTIAL UNCHANGED FILE IN CACHE, FTP TRANSFER"
+    check_log "replicator resumes file" "Resuming partial file in cache"
+    check_equal "cached and served file are equal" cache/$URL_FTP out2
     stopserver
     ;;
   13)
-    echo "TEST $1: RATE CONTROL"
     startserver --limit 10
-    curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP
-    sleep .5
-    echo " * download speed approximately equal to 10240 ......................... ^^^^^"
-    echo " * cached and served file are equal .................................... `compare $PREFIX.cache/$URL_HTTP $PREFIX.out`"
+    http_proxy=localhost:$PORT download http://$URL_HTTP out
+    summary "RATE CONTROL"
+    check "download speed; should be approximately:" 10240 "(check)"
+    check_equal "cached and served file are equal" cache/$URL_HTTP out
     stopserver
     ;;
   14)
-    echo "TEST $1: STATIC MODE"
     startserver --static
-    curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -#
-    curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -#
-    sleep .5
-    echo " * serving directly from cache withou consulting server ................ `logged 'Static mode; serving file directly from cache'`"
-    echo " * cached and served file are equal .................................... `compare $PREFIX.cache/$URL_HTTP $PREFIX.out`"
+    http_proxy=localhost:$PORT download http://$URL_HTTP out1
+    http_proxy=localhost:$PORT download http://$URL_HTTP out2
+    summary "STATIC MODE"
+    check_log "serving directly from cache without consulting server" "Static mode; serving file directly from cache"
+    check_equal "cached and served file are equal" cache/$URL_HTTP out2
     stopserver
     ;;
   15)
-    echo "TEST $1: OFF-LINE MODE"
     startserver --offline
-    curl -x localhost:$PORT -o $PREFIX.out http://$URL_HTTP -#
-    sleep .5
-    echo " * refusing to connect to server ....................................... `logged 'Exception: operating in off-line mode'`"
+    http_proxy=localhost:$PORT download http://$URL_HTTP out
+    summary "OFF-LINE MODE"
+    check_log "refusing to connect to server" "Exception: operating in off-line mode"
     stopserver
     ;;
+  *)
+    exit 1
+    ;;
 esac
+exit 0
