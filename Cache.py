@@ -47,14 +47,15 @@ class File:
       print 'Failed to open file, falling back on tmpfile'
       self.__file = os.tmpfile()
 
-  def open_partial( self, offset ):
+  def open_partial( self, offset=-1 ):
 
-    print 'Opening file for append at byte', offset
     self.mtime = os.stat( self.__path + Params.SUFFIX ).st_mtime
     self.__file = open( self.__path + Params.SUFFIX, 'a+' )
-    assert offset <= self.tell() < self.size, 'range does not match file in cache'
-    self.__file.seek( offset )
-    self.__file.truncate()
+    if offset >= 0:
+      assert offset <= self.tell(), 'range does not match file in cache'
+      self.__file.seek( offset )
+      self.__file.truncate()
+    print 'Opening file for append at byte', self.tell()
 
   def open_full( self ):
 

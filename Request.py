@@ -35,7 +35,7 @@ class HttpRequest:
     line = chunk[ :eol ].rstrip()
     if ': ' in line:
       if Params.VERBOSE > 1:
-        print '>', len( line ) > 80 and line[ :77 ] + '...' or line
+        print '>', line
       key, value = line.split( ': ', 1 )
       key = key.title()
       if key in self.__args:

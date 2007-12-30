@@ -42,7 +42,10 @@ class DataResponse:
     if self.__end == -1:
       self.__end = self.__protocol.size
 
-    args = self.__protocol.args()
+    try:
+      args = self.__protocol.args()
+    except:
+      args = {}
     args[ 'Connection' ] = 'close'
     args[ 'Date' ] = time.strftime( Params.TIMEFMT, time.gmtime() )
     if self.__protocol.mtime >= 0:
@@ -67,8 +70,7 @@ class DataResponse:
       print 'Sending', head
       if Params.VERBOSE > 1:
         for item in args.items():
-          line = '%s: %s' % item
-          print '>', 0 <= line.find( '\r' ) <= 77 and line[ :line.find( '\r' ) ] + '...' or len( line ) > 80 and line[ :77 ] + '...' or line
+          print '> %s: %s' % item
 
     self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
 
@@ -94,7 +96,6 @@ class DataResponse:
         bytes = self.__end - self.__pos
       chunk = self.__protocol.read( self.__pos, bytes )
       self.__pos += sock.send( chunk )
-
     self.Done = not self.__sendbuf and self.__pos >= self.__end >= 0
 
   def canrecv( self ):
@@ -106,15 +107,15 @@ class DataResponse:
     chunk = sock.recv( Params.MAXCHUNK )
     if chunk:
       self.__protocol.write( chunk )
-    elif self.__protocol.size >= 0:
-      assert self.__protocol.size == self.__protocol.tell(), 'connection closed prematurely'
-      self.Done = not self.cansend()
     else:
-      self.__protocol.size = self.__protocol.tell()
-      print 'Connection closed at byte', self.__protocol.size
-      self.Done = not self.cansend()
-
-    self.Done = not self.__sendbuf and self.__pos >= self.__end >= 0
+      if self.__protocol.size >= 0:
+        assert self.__protocol.size == self.__protocol.tell(), 'connection closed prematurely'
+      else:
+        self.__protocol.size = self.__protocol.tell()
+        if self.__end == -1:
+          self.__end = self.__protocol.size
+        print 'Connection closed at byte', self.__protocol.size
+    self.Done = self.__pos >= self.__end >= 0
 
 
 class ChunkedDataResponse( DataResponse ):

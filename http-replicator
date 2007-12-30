@@ -17,7 +17,6 @@ def transaction( client, address ):
     request.recv( client )
 
   try:
-
     while request in DOWNLOADS:
       protocol = DOWNLOADS[ request ]
       if protocol.Response:
@@ -38,7 +37,6 @@ def transaction( client, address ):
         else:
           yield fiber.RECV( server, Params.TIMEOUT )
           protocol.recv( server )
-
     print 'Switching to', protocol.Response.__name__
     response = protocol.Response( protocol, request )
     server = protocol.socket()

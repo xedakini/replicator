@@ -53,7 +53,7 @@ class Fiber:
     try:
       stdout = sys.stdout
       sys.stdout = self
-      self.__generator.throw( Exception, msg )
+      self.__generator.throw( AssertionError, msg )
     finally:
       sys.stdout = stdout
 
