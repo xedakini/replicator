@@ -16,8 +16,8 @@ class HttpRequest:
     if eol == 0:
       return 0
 
-    line = chunk[ :eol ].rstrip()
-    print 'Client sends', line
+    line = chunk[ :eol ]
+    print 'Client sends', line.rstrip()
     fields = line.split()
     assert len( fields ) == 3, 'invalid header line: %r' % line
     self.__cmd, self.__url, dummy = fields
@@ -32,21 +32,15 @@ class HttpRequest:
     if eol == 0:
       return 0
 
-    line = chunk[ :eol ].rstrip()
+    line = chunk[ :eol ]
     if ':' in line:
       if Params.VERBOSE > 1:
-        print '>', line
+        print '>', line.rstrip()
       key, value = line.split( ':', 1 )
       key = key.title()
-      if key in self.__args:
-        self.__args[ key ] += '\r\n' + key + ': ' +  value.strip()
-        if Params.VERBOSE:
-          print 'Merged', key, 'values'
-      else:
-        self.__args[ key ] = value.strip()
-    elif line:
-      print 'Ignored:', line
-    else:
+      assert key not in self.__args, 'duplicate key: %s' % key
+      self.__args[ key ] = value.strip()
+    elif line in ( '\r\n', '\n' ):
       self.__size = int( self.__args.get( 'Content-Length', 0 ) )
       if self.__size:
       	assert self.__cmd == 'POST', '%s request conflicts with message body' % self.__cmd
@@ -57,6 +51,8 @@ class HttpRequest:
       else:
         self.__body = None
         self.__parse = None
+    else:
+      print 'Ignored line: %r' % line
 
     return eol
 

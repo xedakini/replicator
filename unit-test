@@ -263,7 +263,7 @@ case $1 in
     startserver --limit 10
     http_proxy=localhost:$PORT download http://$URL_HTTP out
     summary "RATE CONTROL"
-    check "download speed; should be approximately:" 10240 "(check)"
+    check "download speed; should be approximately 10240" CHECK
     check_equal "cached and served file are equal" cache/$URL_HTTP out
     stopserver
     ;;

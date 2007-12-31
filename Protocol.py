@@ -107,10 +107,10 @@ class HttpProtocol( Cache.File ):
     if eol == 0:
       return 0
 
-    line = chunk[ :eol ].rstrip()
-    print 'Server sends', line
+    line = chunk[ :eol ]
+    print 'Server sends', line.rstrip()
     fields = line.split()
-    assert len( fields ) >= 3 and fields[ 0 ].startswith( 'HTTP/' ) and fields[ 1 ].isdigit(), 'invalid header line: %r' % line.rstrip()
+    assert len( fields ) >= 3 and fields[ 0 ].startswith( 'HTTP/' ) and fields[ 1 ].isdigit(), 'invalid header line: %r' % line
     self.__status = int( fields[ 1 ] )
     self.__message = ' '.join( fields[ 2: ] )
     self.__args = {}
@@ -124,22 +124,20 @@ class HttpProtocol( Cache.File ):
     if eol == 0:
       return 0
 
-    line = chunk[ :eol ].rstrip()
+    line = chunk[ :eol ]
     if ':' in line:
       if Params.VERBOSE > 1:
-        print '>', line
+        print '>', line.rstrip()
       key, value = line.split( ':', 1 )
       key = key.title()
       if key in self.__args:
         self.__args[ key ] += '\r\n' + key + ': ' + value.strip()
-        if Params.VERBOSE:
-          print 'Merged', key, 'values'
       else:
         self.__args[ key ] = value.strip()
-    elif line:
-      print 'Ignored:', line
-    else:
+    elif line in ( '\r\n', '\n' ):
       self.__parse = None
+    else:
+      print 'Ignored:', line
 
     return eol
 
