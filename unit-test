@@ -164,7 +164,7 @@ case $1 in
     http_proxy=localhost:$PORT download http://$URL_HTTP out2
     summary "SERVING FILE FROM CACHE"
     check_exists "first file cached and finalized" cache/$URL_HTTP
-    check_log "second file served from cache" "Complete file in cache"
+    check_log "second file served from cache" "Reading complete file from cache"
     check_equal "cached and first served file are equal" cache/$URL_HTTP out1
     check_equal "cached and second served file are equal" cache/$URL_HTTP out2
     stopserver
@@ -174,8 +174,8 @@ case $1 in
     download http://$URL_HTTP out & abort 1
     http_proxy=localhost:$PORT download http://$URL_HTTP out
     summary "RESUMING PARTIAL FILE BY CLIENT"
-    check_log "received complete file" "Server sends HTTP/1.1 200 OK"
-    check_log "served partial file" "Sending HTTP/1.1 206 Partial Content"
+    check_log "received complete file" "Server responds HTTP/1.1 200 OK"
+    check_log "served partial file" "Replicator responds HTTP/1.1 206 Partial Content"
     check_equal "cached and served file are equal" cache/$URL_HTTP out
     stopserver
     ;;
@@ -184,18 +184,18 @@ case $1 in
     touchfile cache/$URL_HTTP -m -t 190112140000 
     http_proxy=localhost:$PORT download http://$URL_HTTP out
     summary "REDOWNLOADING CHANGED FILE"
-    check_log "detected complete file in cache" "Complete file in cache"
-    check_log "downloading new file" "Opening new file"
+    check_log "detected complete file in cache" "Checking complete file in cache"
+    check_log "downloading new file" "Preparing new file in cache"
     check_equal "cached and served file are equal" cache/$URL_HTTP out
     stopserver
     ;;
   6)
-    startserver --debug
+    startserver
     http_proxy=localhost:$PORT download http://$URL_HTTP out1 & abort 1
     http_proxy=localhost:$PORT download http://$URL_HTTP out2
     summary "RESUMING PARTIAL UNCHANGED FILE IN CACHE"
-    check_log "replicator asks for missing part" "Partial file in cache"
-    check_log "received partial file" "Server sends HTTP/1.1 206 Partial Content"
+    check_log "replicator asks for missing part" "Requesting resume of partial file in cache"
+    check_log "received partial file" "Server responds HTTP/1.1 206 Partial Content"
     check_equal "cached and served file are equal" cache/$URL_HTTP out2
     stopserver
     ;;
@@ -204,8 +204,8 @@ case $1 in
     touchfile cache/$URL_HTTP.incomplete
     http_proxy=localhost:$PORT download http://$URL_HTTP out
     summary "RESUMING PARTIAL CHANGED FILE IN CACHE"
-    check_log "replicator asks for missing part" "Partial file in cache"
-    check_log "received complete file" "Server sends HTTP/1.1 200 OK"
+    check_log "replicator asks for missing part" "Requesting resume of partial file in cache"
+    check_log "received complete file" "Server responds HTTP/1.1 200 OK"
     check_equal "cached and served file are equal" cache/$URL_HTTP out
     stopserver
     ;;
@@ -245,7 +245,7 @@ case $1 in
     ftp_proxy=localhost:$PORT download ftp://$URL_FTP out2
     summary "SERVING FILE FROM CACHE, FTP TRANSFER"
     check_exists "first file cached and finalized" cache/$URL_FTP
-    check_log "second file served from cache" "Serving complete file from cache"
+    check_log "second file served from cache" "Reading complete file from cache"
     check_equal "cached and first served file are equal" cache/$URL_FTP out1
     check_equal "cached and second served file are equal" cache/$URL_FTP out2
     stopserver
@@ -280,7 +280,7 @@ case $1 in
     startserver --offline
     http_proxy=localhost:$PORT download http://$URL_HTTP out
     summary "OFF-LINE MODE"
-    check_log "refusing to connect to server" "Exception: operating in off-line mode"
+    check_log "refusing to connect to server" "AssertionError: operating in off-line mode"
     stopserver
     ;;
   *)

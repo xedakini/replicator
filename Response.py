@@ -1,4 +1,4 @@
-import Params, time
+import Params, time, traceback
 
 
 class BlindResponse:
@@ -68,11 +68,10 @@ class DataResponse:
       args[ 'Content-Range' ] = 'bytes */*'
       args[ 'Content-Length' ] = '0'
 
-    if Params.VERBOSE > 0:
-      print 'Sending', head
-      if Params.VERBOSE > 1:
-        for key in args:
-          print '> %s: %s' % ( key, args[ key ].replace( '\r\n', ' > ' ) )
+    print 'Replicator responds', head
+    if Params.VERBOSE > 1:
+      for key in args:
+        print '> %s: %s' % ( key, args[ key ].replace( '\r\n', ' > ' ) )
 
     self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
     if Params.LIMIT:
@@ -159,10 +158,19 @@ class DirectResponse:
 
   Done = False
 
-  def __init__( self, sendbuf ):
+  def __init__( self, status, request ):
 
-    self.__sendbuf = sendbuf
+    lines = [ 'HTTP Replicator: %s' % status, '', 'Requesting:' ]
+    head, body = request.recvbuf().split( '\r\n\r\n', 1 )
+    for line in head.splitlines():
+      lines.append( len( line ) > 78 and '  %s...' % line[ :75 ] or '  %s' % line )
+    if body:
+      lines.append( '+ Body: %i bytes' % len( body ) )
+    lines.append( '' )
+    lines.append( traceback.format_exc() )
 
+    self.__sendbuf = 'HTTP/1.1 %s\r\nContent-Type: text/plain\r\n\r\n%s' % ( status, '\n'.join( lines ) )
+    
   def hasdata( self ):
 
     return bool( self.__sendbuf )
@@ -188,22 +196,12 @@ class NotFoundResponse( DirectResponse ):
 
   def __init__( self, protocol, request ):
 
-    DirectResponse.__init__( self, 'HTTP/1.1 404 Not Found\r\n\r\n' )
+    DirectResponse.__init__( self, '404 Not Found', request )
 
 
 class ExceptionResponse( DirectResponse ):
 
-  def __init__( self, exception, request ):
+  def __init__( self, request ):
 
-    print 'Exception:', exception
-
-    lines = [ 'HTTP/1.1 500 Internal Server Error\r', 'Content-Type: text/plain\r', '\r', 'HTTP Replicator: 500 Internal Server Error', '', 'Requesting:', '' ]
-    head, body = request.recvbuf().split( '\r\n\r\n', 1 )
-    for line in head.splitlines():
-      lines.append( len( line ) > 78 and '  %s...' % line[ :75 ] or '  %s' % line )
-    if body:
-      lines.append( '+ Body: %i bytes' % len( body ) )
-    lines.append( '' )
-    lines.append( 'Exception: %s' % exception )
-
-    DirectResponse.__init__( self, '\n'.join( lines ) )
+    traceback.print_exc()
+    DirectResponse.__init__( self, '500 Internal Server Error', request )

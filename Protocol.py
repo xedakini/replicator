@@ -78,11 +78,11 @@ class HttpProtocol( Cache.File ):
       size = stat.st_size
       mtime = time.strftime( Params.TIMEFMT, time.gmtime( stat.st_mtime ) )
       if self.partial():
-        print 'Partial file in cache: %i bytes, %s' % ( size, mtime )
+        print 'Requesting resume of partial file in cache: %i bytes, %s' % ( size, mtime )
         args[ 'Range' ] = 'bytes=%i-' % size
         args[ 'If-Range' ] = mtime
       else:
-        print 'Complete file in cache: %i bytes, %s' % ( size, mtime )
+        print 'Checking complete file in cache: %i bytes, %s' % ( size, mtime )
         args[ 'If-Modified-Since' ] = mtime
 
     self.__socket = connect( request.url()[ :2 ] )
@@ -108,7 +108,7 @@ class HttpProtocol( Cache.File ):
       return 0
 
     line = chunk[ :eol ]
-    print 'Server sends', line.rstrip()
+    print 'Server responds', line.rstrip()
     fields = line.split()
     assert len( fields ) >= 3 and fields[ 0 ].startswith( 'HTTP/' ) and fields[ 1 ].isdigit(), 'invalid header line: %r' % line
     self.__status = int( fields[ 1 ] )
@@ -137,7 +137,7 @@ class HttpProtocol( Cache.File ):
     elif line in ( '\r\n', '\n' ):
       self.__parse = None
     else:
-      print 'Ignored:', line
+      print 'Ignored header line:', line
 
     return eol
 
@@ -317,13 +317,11 @@ class FtpProtocol( Cache.File ):
     print 'Modification time:', time.strftime( Params.TIMEFMT, time.gmtime( self.mtime ) )
     stat = self.partial()
     if stat and stat.st_mtime == self.mtime:
-      print 'Resuming partial file in cache: %i bytes' % stat.st_size
       self.__sendbuf = 'REST %i\r\n' % stat.st_size
       self.__handle = FtpProtocol.__handle_resume
     else:
       stat = self.full()
       if stat and stat.st_mtime == self.mtime:
-        print 'Serving complete file from cache: %i bytes' % stat.st_size
         self.open_full()
         self.Response = Response.DataResponse
       else:

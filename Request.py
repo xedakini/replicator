@@ -52,7 +52,7 @@ class HttpRequest:
         self.__body = None
         self.__parse = None
     else:
-      print 'Ignored line: %r' % line
+      print 'Ignored header line: %r' % line
 
     return eol
 

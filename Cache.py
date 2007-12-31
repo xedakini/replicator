@@ -39,12 +39,12 @@ class File:
 
   def open_new( self ):
 
-    print 'Opening new file'
+    print 'Preparing new file in cache'
     try:
       makedirs( self.__path )
       self.__file = open( self.__path + Params.SUFFIX, 'w+' )
-    except:
-      print 'Failed to open file, falling back on tmpfile'
+    except Exception, e:
+      print 'Failed to open file:', e
       self.__file = os.tmpfile()
 
   def open_partial( self, offset=-1 ):
@@ -55,23 +55,23 @@ class File:
       assert offset <= self.tell(), 'range does not match file in cache'
       self.__file.seek( offset )
       self.__file.truncate()
-    print 'Opening file for append at byte', self.tell()
+    print 'Resuming partial file in cache at byte', self.tell()
 
   def open_full( self ):
 
-    print 'Opening file read-only'
     self.mtime = os.stat( self.__path ).st_mtime
     self.__file = open( self.__path, 'r' )
     self.size = self.tell()
+    print 'Reading complete file from cache'
 
   def remove_full( self ):
 
-    print 'Removing complete file from cache'
     os.remove( self.__path )
+    print 'Removed complete file from cache'
 
   def remove_partial( self ):
 
-    print 'Removing partial file from cache'
+    print 'Removed partial file from cache'
     os.remove( self.__path + Params.SUFFIX )
 
   def read( self, pos, size ):

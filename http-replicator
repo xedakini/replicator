@@ -27,7 +27,8 @@ def transaction( client, address ):
       else:
         yield fiber.WAIT()
     else:
-      print 'Switching to', request.Protocol.__name__
+      if Params.VERBOSE:
+        print 'Switching to', request.Protocol.__name__
       protocol = DOWNLOADS[ request ] = request.Protocol( request )
       server = protocol.socket()
       while not protocol.Response:
@@ -37,12 +38,14 @@ def transaction( client, address ):
         else:
           yield fiber.RECV( server, Params.TIMEOUT )
           protocol.recv( server )
-    print 'Switching to', protocol.Response.__name__
+    if Params.VERBOSE:
+      print 'Switching to', protocol.Response.__name__
     response = protocol.Response( protocol, request )
     server = protocol.socket()
-  except Exception, e:
-    print 'Switching to ExceptionResponse'
-    response = Response.ExceptionResponse( e, request )
+  except Exception:
+    if Params.VERBOSE:
+      print 'Switching to ExceptionResponse'
+    response = Response.ExceptionResponse( request )
 
   while not response.Done:
     if response.hasdata():
@@ -54,7 +57,7 @@ def transaction( client, address ):
       yield fiber.RECV( server, Params.TIMEOUT )
       response.recv( server )
 
-  print 'Done'
+  print 'Transaction successfully completed'
 
 
 fiber.spawn( transaction, Params.PORT, Params.DEBUG, Params.LOG )

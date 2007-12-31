@@ -60,7 +60,7 @@ class Fiber:
     except AssertionError, msg:
       print 'Error:', msg
     except:
-      traceback.print_exc( file=sys.stdout )
+      traceback.print_exc()
 
   def __repr__( self ):
 
@@ -78,12 +78,14 @@ class GatherFiber( Fiber ):
 
   def step( self, throw=None ):
 
-    self.__stdout = sys.stdout
+    stdout = sys.stdout
+    stderr = sys.stderr
     try:
-      sys.stdout = self
+      sys.stdout = sys.stderr = self
       Fiber.step( self, throw )
     finally:
-      sys.stdout = self.__stdout
+      sys.stdout = stdout
+      sys.stderr = stderr
 
   def write( self, string ):
 
@@ -109,18 +111,21 @@ class DebugFiber( Fiber ):
     self.__id = DebugFiber.id
     sys.stdout.write( '[ %04X ] %s\n' % ( self.__id, time.ctime() ) )
     self.__newline = True
+    self.__stdout = sys.stdout
     DebugFiber.id = ( self.id + 1 ) % 65535
 
   def step( self, throw=None ):
 
-    self.__stdout = sys.stdout
+    stdout = sys.stdout
+    stderr = sys.stderr
     try:
-      sys.stdout = self
+      sys.stdout = sys.stderr = self
       Fiber.step( self, throw )
       if self.state:
         print 'Waiting at', self
     finally:
-      sys.stdout = self.__stdout
+      sys.stdout = stdout
+      sys.stderr = stderr
 
   def write( self, string ):
 
