@@ -38,42 +38,29 @@ class WAIT:
 
 class Fiber:
 
-  write = sys.stdout.write
-  writelines = sys.stdout.writelines
-
   def __init__( self, generator ):
 
     self.__generator = generator
     self.state = WAIT()
 
-  def __newstate( self ):
-
-    sys.stdout = self
-    state = self.__generator.next()
-    assert isinstance( state, (SEND, RECV, WAIT) ), 'invalid waiting state %r' % state
-    return state
-
-  def step( self ):
+  def step( self, throw=None ):
 
     self.state = None
     try:
-      stdout = sys.stdout
-      self.state = self.__newstate()
-    finally:
-      sys.stdout = stdout
-
-  def throw( self, msg ):
-
-    self.state = None
-    if hasattr( self.__generator, 'throw' ):
-      try:
-        stdout = sys.stdout
-        self.__generator.throw( AssertionError, msg )
-        self.state = self.__newstate()
-      finally:
-        sys.stdout = stdout
-    else:
-      print >> self, 'Terminating fiber:', msg
+      if throw:
+        assert hasattr( self.__generator, 'throw' ), throw
+        self.__generator.throw( AssertionError, throw )
+      state = self.__generator.next()
+      assert isinstance( state, (SEND, RECV, WAIT) ), 'invalid waiting state %r' % state
+      self.state = state
+    except KeyboardInterrupt:
+      raise
+    except StopIteration:
+      pass
+    except AssertionError, msg:
+      print 'Error:', msg
+    except:
+      traceback.print_exc( file=sys.stdout )
 
   def __repr__( self ):
 
@@ -86,8 +73,17 @@ class GatherFiber( Fiber ):
 
     Fiber.__init__( self, generator )
     self.__chunks = [ '[ 0.00 ] %s\n' % time.ctime() ]
-    self.__newline = True
     self.__start = time.time()
+    self.__newline = True
+
+  def step( self, throw=None ):
+
+    self.__stdout = sys.stdout
+    try:
+      sys.stdout = self
+      Fiber.step( self, throw )
+    finally:
+      sys.stdout = self.__stdout
 
   def write( self, string ):
 
@@ -96,24 +92,11 @@ class GatherFiber( Fiber ):
     self.__chunks.append( string )
     self.__newline = string.endswith( '\n' )
 
-  def step( self ):
-
-    try:
-      Fiber.step( self )
-    except KeyboardInterrupt:
-      raise
-    except StopIteration:
-      pass
-    except ( AssertionError, socket.error ), msg:
-      print >> self, 'Error:', msg
-    except:
-      traceback.print_exc( file=self )
-
   def __del__( self ):
 
-    Fiber.writelines( self.__chunks )
+    sys.stdout.writelines( self.__chunks )
     if not self.__newline:
-      Fiber.write( '\n' )
+      sys.stdout.write( '\n' )
 
 
 class DebugFiber( Fiber ):
@@ -123,31 +106,28 @@ class DebugFiber( Fiber ):
   def __init__( self, generator ):
 
     Fiber.__init__( self, generator )
-    self.__id = '  %04X   ' % ( DebugFiber.id % 65535 )
-    self.__newline = False
-    print >> self, '[', self.__id[ 2:6 ], ']', time.ctime()
+    self.__id = DebugFiber.id
+    sys.stdout.write( '[ %04X ] %s\n' % ( self.__id, time.ctime() ) )
+    self.__newline = True
+    DebugFiber.id = ( self.id + 1 ) % 65535
 
-    DebugFiber.id += 1
+  def step( self, throw=None ):
+
+    self.__stdout = sys.stdout
+    try:
+      sys.stdout = self
+      Fiber.step( self, throw )
+      if self.state:
+        print 'Waiting at', self
+    finally:
+      sys.stdout = self.__stdout
 
   def write( self, string ):
 
     if self.__newline:
-      Fiber.write( self.__id )
-    Fiber.write( string )
+      self.__stdout.write( '  %04X   ' % self.__id )
+    self.__stdout.write( string )
     self.__newline = string.endswith( '\n' )
-
-  def step( self ):
-
-    try:
-      Fiber.step( self )
-    except KeyboardInterrupt:
-      raise
-    except StopIteration:
-      pass
-    except:
-      traceback.print_exc( file=self )
-    else:
-      print >> self, 'Waiting at', self
 
 
 def fork( output ):
@@ -217,7 +197,7 @@ def spawn( generator, port, debug, log ):
 
       tryrecv = { listener.fileno(): None }
       trysend = {}
-      timeout = None
+      expire = None
       now = time.time()
 
       i = len( fibers )
@@ -229,7 +209,7 @@ def spawn( generator, port, debug, log ):
           if isinstance( state, WAIT ):
             fibers[ i ].step()
           else:
-            fibers[ i ].throw( 'Connection timed out' )
+            fibers[ i ].step( throw='connection timed out' )
           state = fibers[ i ].state
 
         if not state:
@@ -243,18 +223,17 @@ def spawn( generator, port, debug, log ):
         elif state.expire is None:
           continue
 
-        mytimeout = state.expire - now
-        if mytimeout < timeout or timeout is None:
-          timeout = max( mytimeout, 0 )
+        if state.expire < expire or expire is None:
+          expire = state.expire
 
-      if timeout is None:
+      if expire is None:
         print '[ IDLE ]', time.ctime()
         sys.stdout.flush()
         canrecv, cansend, dummy = select.select( tryrecv, trysend, [] )
         print '[ BUSY ]', time.ctime()
         sys.stdout.flush()
       else:
-        canrecv, cansend, dummy = select.select( tryrecv, trysend, [], timeout )
+        canrecv, cansend, dummy = select.select( tryrecv, trysend, [], max( expire - now, 0 ) )
 
       for fileno in canrecv:
         if fileno is listener.fileno():
