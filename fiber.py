@@ -34,26 +34,34 @@ class Fiber:
     self.__generator = generator
     self.state = WAIT()
 
+  def __newstate( self ):
+
+    sys.stdout = self
+    state = self.__generator.next()
+    assert isinstance( state, (SEND, RECV, WAIT) ), 'invalid waiting state %r' % state
+    return state
+
   def step( self ):
 
     self.state = None
     try:
       stdout = sys.stdout
-      sys.stdout = self
-      state = self.__generator.next()
-      assert isinstance( state, (SEND, RECV, WAIT) ), 'invalid waiting state %r' % state
-      self.state = state
+      self.state = self.__newstate()
     finally:
       sys.stdout = stdout
 
   def throw( self, msg ):
 
-    try:
-      stdout = sys.stdout
-      sys.stdout = self
-      self.__generator.throw( AssertionError, msg )
-    finally:
-      sys.stdout = stdout
+    self.state = None
+    if hasattr( self.__generator, 'throw' ):
+      try:
+        stdout = sys.stdout
+        self.__generator.throw( AssertionError, msg )
+        self.state = self.__newstate()
+      finally:
+        sys.stdout = stdout
+    else:
+      print >> self, 'Terminating fiber:', msg
 
   def __repr__( self ):
 
@@ -201,9 +209,10 @@ def spawn( generator, port, debug, log ):
         state = fibers[ i ].state
 
         if state and time.time() > state.expire:
-          if not isinstance( state, WAIT ):
+          if isinstance( state, WAIT ):
+            fibers[ i ].step()
+          else:
             fibers[ i ].throw( 'Connection timed out' )
-          fibers[ i ].step()
           state = fibers[ i ].state
 
         if not state:

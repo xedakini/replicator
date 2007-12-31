@@ -125,17 +125,17 @@ class HttpProtocol( Cache.File ):
       return 0
 
     line = chunk[ :eol ].rstrip()
-    if ': ' in line:
+    if ':' in line:
       if Params.VERBOSE > 1:
         print '>', line
-      key, value = line.split( ': ', 1 )
+      key, value = line.split( ':', 1 )
       key = key.title()
       if key in self.__args:
-        self.__args[ key ] += '\r\n' + key + ': ' +  value
+        self.__args[ key ] += '\r\n' + key + ': ' + value.strip()
         if Params.VERBOSE:
           print 'Merged', key, 'values'
       else:
-        self.__args[ key ] = value
+        self.__args[ key ] = value.strip()
     elif line:
       print 'Ignored:', line
     else:

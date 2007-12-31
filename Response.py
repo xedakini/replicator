@@ -101,7 +101,7 @@ class DataResponse:
         bytes = self.__end - self.__pos
       chunk = self.__protocol.read( self.__pos, bytes )
       self.__pos += sock.send( chunk )
-    self.Done = not self.__sendbuf and self.__pos >= self.__end >= 0
+    self.Done = not self.__sendbuf and ( self.__pos >= self.__protocol.size >= 0 or self.__pos >= self.__end >= 0 )
 
   def needwait( self ):
 
@@ -120,10 +120,8 @@ class DataResponse:
         assert self.__protocol.size == self.__protocol.tell(), 'connection closed prematurely'
       else:
         self.__protocol.size = self.__protocol.tell()
-        if self.__end == -1:
-          self.__end = self.__protocol.size
         print 'Connection closed at byte', self.__protocol.size
-    self.Done = self.__pos >= self.__end >= 0
+      self.Done = not self.hasdata()
 
 
 class ChunkedDataResponse( DataResponse ):
@@ -138,26 +136,23 @@ class ChunkedDataResponse( DataResponse ):
 
     assert not self.Done
     chunk = sock.recv( Params.MAXCHUNK )
+    assert chunk, 'chunked data error: connection closed prematurely'
     self.__recvbuf += chunk
-    beg = self.__recvbuf.find( '\n' ) + 1
-    if not beg:
-      assert chunk, 'chunked data error: connection closed waiting for header'
-      return
-    end = beg + int( self.__recvbuf[ :beg ].split( ';' )[ 0 ], 16 )
-    if len( self.__recvbuf ) < end + 2:
-      assert chunk, 'chunked data error: connection closed waiting for data'
-      return
-    assert self.__recvbuf[ end:end+2 ] == '\r\n', 'chunked data error: chunk does not match announced size'
-    if Params.VERBOSE:
-      print 'Received', end - beg, 'byte chunk'
-
-    if end > beg:
-      self.__protocol.write( self.__recvbuf[ beg:end ] )
-      self.__recvbuf = self.__recvbuf[ end+2: ]
-    else:
-      self.__protocol.size = self.__protocol.tell()
-      print 'Connection closed at byte', self.__protocol.size
-      self.Done = not self.hasdata()
+    while '\r\n' in self.__recvbuf:
+      head, tail = self.__recvbuf.split( '\r\n', 1 )
+      chunksize = int( head.split( ';' )[ 0 ], 16 )
+      if chunksize == 0:
+        self.__protocol.size = self.__protocol.tell()
+        print 'Connection closed at byte', self.__protocol.size
+        self.Done = not self.hasdata()
+        return
+      if len( tail ) < chunksize + 2:
+        return
+      assert tail[ chunksize:chunksize+2 ] == '\r\n', 'chunked data error: chunk does not match announced size'
+      if Params.VERBOSE > 1:
+        print 'Received', chunksize, 'byte chunk'
+      self.__protocol.write( tail[ :chunksize ] )
+      self.__recvbuf = tail[ chunksize+2: ]
 
 
 class DirectResponse:

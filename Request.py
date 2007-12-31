@@ -33,28 +33,28 @@ class HttpRequest:
       return 0
 
     line = chunk[ :eol ].rstrip()
-    if ': ' in line:
+    if ':' in line:
       if Params.VERBOSE > 1:
         print '>', line
-      key, value = line.split( ': ', 1 )
+      key, value = line.split( ':', 1 )
       key = key.title()
       if key in self.__args:
-        self.__args[ key ] += '\r\n' + key + ': ' +  value
+        self.__args[ key ] += '\r\n' + key + ': ' +  value.strip()
         if Params.VERBOSE:
           print 'Merged', key, 'values'
       else:
-        self.__args[ key ] = value
+        self.__args[ key ] = value.strip()
     elif line:
       print 'Ignored:', line
     else:
       self.__size = int( self.__args.get( 'Content-Length', 0 ) )
-      if self.__cmd == 'POST':
+      if self.__size:
+      	assert self.__cmd == 'POST', '%s request conflicts with message body' % self.__cmd
         if Params.VERBOSE:
           print 'Opening temporary file for POST upload'
         self.__body = os.tmpfile()
         self.__parse = self.__parse_body
       else:
-        assert not self.__size, '%s request announces message body' % self.__cmd
         self.__body = None
         self.__parse = None
 
