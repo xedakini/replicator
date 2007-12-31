@@ -204,11 +204,14 @@ def spawn( generator, port, debug, log ):
       tryrecv = { listener.fileno(): None }
       trysend = {}
       timeout = None
+      now = time.time()
 
-      for i in range( len( fibers ) -1, -1, -1 ):
+      i = len( fibers )
+      while i:
+        i -= 1
         state = fibers[ i ].state
 
-        if state and time.time() > state.expire:
+        if state and now > state.expire:
           if isinstance( state, WAIT ):
             fibers[ i ].step()
           else:
@@ -226,9 +229,9 @@ def spawn( generator, port, debug, log ):
         elif state.expire is None:
           continue
 
-        mytimeout = max( time.time() - state.expire, 0 )
+        mytimeout = now - state.expire
         if mytimeout < timeout or timeout is None:
-          timeout = mytimeout
+          timeout = max( mytimeout, 0 )
 
       if timeout is None:
         print '[ IDLE ]'

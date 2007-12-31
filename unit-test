@@ -62,9 +62,10 @@ function abort
 
 function touchfile
 {
-  mkdir -p $PREFIX.$1
-  rmdir $PREFIX.$1
-  touch $PREFIX.$1 $@
+  FILENAME=$PREFIX.$1
+  shift
+  mkdir -p `dirname $FILENAME`
+  touch $@ $FILENAME
 }
 
 function summary
