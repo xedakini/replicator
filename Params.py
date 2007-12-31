@@ -21,17 +21,15 @@ USAGE = '''usage: %(PROG)s [options]
 options:
   -h --help          show this help message and exit
   -p --port PORT     listen on this port for incoming connections, default %(PORT)i
-  -s --static        static mode; assume files never change
-     --offline       offline mode; never connect to server
-  -t --timeout SEC   break connection after so many seconds of inactivity, default %(TIMEOUT)i
-     --forward       forward requests to a second proxy server
-  -6 --ipv6          try ipv6 addresses if available
-     --limit RATE    limit download rate at a fixed K/s
-  -l --log FILE      write output to a log file instead of stdout
-  -v --verbose       show http headers and other info
-     --debug         show traceback info
   -r --root          set cache root directory, default current: %(ROOT)s
-  -d --daemon LOG    route output to log and detach''' % locals()
+  -v --verbose       show http headers and other info
+  -t --timeout SEC   break connection after so many seconds of inactivity, default %(TIMEOUT)i
+  -6 --ipv6          try ipv6 addresses if available
+     --static        static mode; assume files never change
+     --offline       offline mode; never connect to server
+     --limit RATE    limit download rate at a fixed K/s
+     --daemon LOG    route output to log and detach
+     --debug         switch from gather to debug output module''' % locals()
 
 for _arg in _args:
 
@@ -43,28 +41,6 @@ for _arg in _args:
       assert PORT > 0
     except:
       sys.exit( 'Error: %s requires a positive numerical argument' % _arg )
-  elif _arg in ( '-d', '--daemon' ):
-    LOG = _args.next()
-  elif _arg in ( '-s', '--static' ):
-    STATIC = True
-  elif _arg == '--offline':
-    ONLINE = False
-    STATIC = True
-  elif _arg in ( '-t', '--timeout' ):
-    try:
-      TIMEOUT = int( _args.next() )
-      assert TIMEOUT > 0
-    except:
-      sys.exit( 'Error: %s requires a positive numerical argument' % _arg )
-  elif _arg == '--debug':
-    DEBUG = True
-  elif _arg in ( '-v', '--verbose' ):
-    VERBOSE += 1
-  elif _arg == '--limit':
-    try:
-      LIMIT = float( _args.next() ) * 1024
-    except:
-      sys.exit( 'Error: %s requires a numerical argument' % _arg )
   elif _arg in ( '-r', '--root' ):
     try:
       ROOT = os.path.realpath( _args.next() ) + os.sep
@@ -73,7 +49,31 @@ for _arg in _args:
       sys.exit( 'Error: %s requires a directory argument' % _arg )
     except:
       sys.exit( 'Error: invalid cache directory %s' % ROOT )
+  elif _arg in ( '-v', '--verbose' ):
+    VERBOSE += 1
+  elif _arg in ( '-t', '--timeout' ):
+    try:
+      TIMEOUT = int( _args.next() )
+      assert TIMEOUT > 0
+    except:
+      sys.exit( 'Error: %s requires a positive numerical argument' % _arg )
   elif _arg in ( '-6', '--ipv6' ):
     FAMILY = socket.AF_UNSPEC
+  elif _arg == '--static':
+    STATIC = True
+  elif _arg == '--offline':
+    ONLINE = False
+    STATIC = True
+  elif _arg == '--limit':
+    try:
+      LIMIT = float( _args.next() ) * 1024
+    except:
+      sys.exit( 'Error: %s requires a numerical argument' % _arg )
+  elif _arg == '--daemon':
+    LOG = _args.next()
+  elif _arg == '--debug':
+    DEBUG = True
   else:
     sys.exit( 'Error: invalid option %r' % _arg )
+
+del _arg, _args

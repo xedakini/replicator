@@ -8,6 +8,10 @@ class SEND:
     self.fileno = sock.fileno()
     self.expire = time.time() + timeout
 
+  def __str__( self ):
+
+    return 'SEND(%i,%s)' % ( self.fileno, time.strftime( '%H:%M:%S', time.localtime( self.expire ) ) )
+
 
 class RECV:
 
@@ -16,12 +20,20 @@ class RECV:
     self.fileno = sock.fileno()
     self.expire = time.time() + timeout
 
+  def __str__( self ):
+
+    return 'RECV(%i,%s)' % ( self.fileno, time.strftime( '%H:%M:%S', time.localtime( self.expire ) ) )
+
 
 class WAIT:
 
   def __init__( self, timeout = None ):
 
     self.expire = timeout and time.time() + timeout or None
+
+  def __str__( self ):
+
+    return 'WAIT(%s)' % ( self.expire and time.strftime( '%H:%M:%S', time.localtime( self.expire ) ) )
 
 
 class Fiber:
@@ -65,7 +77,7 @@ class Fiber:
 
   def __repr__( self ):
 
-    return '%s:%i' % ( self.state.__class__.__name__, self.__generator.gi_frame.f_lineno )
+    return '%i: %s' % ( self.__generator.gi_frame.f_lineno, self.state )
 
 
 class GatherFiber( Fiber ):
@@ -73,14 +85,14 @@ class GatherFiber( Fiber ):
   def __init__( self, generator ):
 
     Fiber.__init__( self, generator )
-    self.__chunks = [ time.ctime() + '\n' ]
+    self.__chunks = [ '[ 0.00 ] %s\n' % time.ctime() ]
     self.__newline = True
     self.__start = time.time()
 
   def write( self, string ):
 
     if self.__newline:
-      self.__chunks.append( '%6.2f  ' % ( time.time() - self.__start ) )
+      self.__chunks.append( '%6.2f   ' % ( time.time() - self.__start ) )
     self.__chunks.append( string )
     self.__newline = string.endswith( '\n' )
 
@@ -111,11 +123,11 @@ class DebugFiber( Fiber ):
   def __init__( self, generator ):
 
     Fiber.__init__( self, generator )
-    self.__id = '[ %04X ] ' % ( DebugFiber.id % 65535 )
-    self.__newline = True
-    DebugFiber.id += 1
+    self.__id = '  %04X   ' % ( DebugFiber.id % 65535 )
+    self.__newline = False
+    print >> self, '[', self.__id[ 2:6 ], ']', time.ctime()
 
-    print >> self, 'New fiber'
+    DebugFiber.id += 1
 
   def write( self, string ):
 
@@ -128,8 +140,10 @@ class DebugFiber( Fiber ):
 
     try:
       Fiber.step( self )
+    except KeyboardInterrupt:
+      raise
     except StopIteration:
-      print >> self, 'End of fiber.'
+      pass
     except:
       traceback.print_exc( file=self )
     else:
@@ -194,7 +208,7 @@ def spawn( generator, port, debug, log ):
   else:
     myFiber = GatherFiber
 
-  print time.strftime( '%D' ), 'HTTP Replicator started'
+  print '  ....   HTTP Replicator started'
   try:
 
     fibers = []
@@ -229,15 +243,15 @@ def spawn( generator, port, debug, log ):
         elif state.expire is None:
           continue
 
-        mytimeout = now - state.expire
+        mytimeout = state.expire - now
         if mytimeout < timeout or timeout is None:
           timeout = max( mytimeout, 0 )
 
       if timeout is None:
-        print '[ IDLE ]'
+        print '[ IDLE ]', time.ctime()
         sys.stdout.flush()
         canrecv, cansend, dummy = select.select( tryrecv, trysend, [] )
-        print '[ BUSY ]'
+        print '[ BUSY ]', time.ctime()
         sys.stdout.flush()
       else:
         canrecv, cansend, dummy = select.select( tryrecv, trysend, [], timeout )
@@ -251,9 +265,9 @@ def spawn( generator, port, debug, log ):
         trysend[ fileno ].step()
 
   except KeyboardInterrupt:
-    print time.strftime( '%D' ), 'HTTP Replicator terminated'
+    print '  ....   HTTP Replicator terminated'
     sys.exit( 0 )
   except:
-    print time.strftime( '%D' ), 'HTTP Replicator crashed'
+    print '  ....   HTTP Replicator crashed'
     traceback.print_exc( file=sys.stdout )
     sys.exit( 1 )

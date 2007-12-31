@@ -20,7 +20,7 @@ function startserver
   test -e $PID && kill -int `cat $PID`
   rm -rf $PREFIX.*
   mkdir $PREFIX.cache
-  if ! ./http-replicator -p $PORT -r $PREFIX.cache -v -v $@ -d $PREFIX.log > $PID; then
+  if ! ./http-replicator -p $PORT -r $PREFIX.cache -v -v $@ --daemon $PREFIX.log > $PID; then
     cat $PID
     rm $PID
     exit 1
