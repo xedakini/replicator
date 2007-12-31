@@ -56,6 +56,7 @@ class Fiber:
     except KeyboardInterrupt:
       raise
     except StopIteration:
+      del self.__generator
       pass
     except AssertionError, msg:
       print 'Error:', msg
