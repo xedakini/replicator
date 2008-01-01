@@ -22,7 +22,7 @@ USAGE = '''usage: %(PROG)s [options]
 options:
   -h --help          show this help message and exit
   -p --port PORT     listen on this port for incoming connections, default %(PORT)i
-  -r --root          set cache root directory, default current: %(ROOT)s
+  -r --root DIR      set cache root directory, default current: %(ROOT)s
   -v --verbose       show http headers and other info
   -t --timeout SEC   break connection after so many seconds of inactivity, default %(TIMEOUT)i
   -6 --ipv6          try ipv6 addresses if available

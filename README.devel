@@ -1,3 +1,9 @@
+  +---------------------------+
+  | Work in progress.         |
+  | Last modified: 2007-07-09 |
+  | Gertjan van Zwieten       |
+  +---------------------------+
+
 The FIBER module
 ================
 
@@ -52,14 +58,14 @@ time is with the programmer.
 
 As of version 2.2 the Python language includes on object that can very easily be
 turned into the fiber just described: the generator [2]. Complete with a yield
-statement to both put the fiber on hold and communitate the state to the server
-(in the form of a state-argument tuple), this is precisely the kind of
-"resumable function" we're looking for. Other implementations of this idea speak
-of weightless threads [3], coroutines [4], microthreads, tasklets, etc. Also
-notable in this respect is Stackless Python [5], introducing true microthreads
-in the language itself, and stackless in PyPy [6]. And, lastly, there is the
-asyncore module [7] that is very similar to fibers except for its rigid
-framework. Indeed, the previous versions of replicator were based on this.
+statement to both put the fiber on hold and communitate the state to the
+server, this is precisely the kind of "resumable function" we are looking for.
+Other implementations of this idea speak of weightless threads [3], coroutines
+[4], microthreads, tasklets, etc. Also notable in this respect is Stackless
+Python [5], introducing true microthreads in the language itself, and stackless
+in PyPy [6]. And, lastly, there is the asyncore module [7] that is very similar
+to fibers except for its rigid framework. Indeed, the previous versions of
+replicator were based on this.
 
 A Python fiber terminates when either it returns or raises an exception. The
 schedular takes care that exceptions are handled without interfering with other
@@ -81,7 +87,7 @@ main loop is exited by sending SIGHUP or ^C, in either case raising a
 KeyboardInterrupt. Finally, note that a valid generator:
 
  * takes two arguments: 1) the connecting socket and 2) its address
- * yields only tuples of the form (state, argument)
+ * yields only objects of type WAIT, SEND, RECV
 
 Other than that there are no restrictions. For example fiber code, read on.
 
@@ -116,50 +122,26 @@ to the cache, which leaves only the currently running downloads as data to be
 shared globally. Other than that, all transaction threads can run completely
 indepent of each other and need only be switched on and off at suitable times.
 
+Etc..
 
 Requests
 ========
 
 * HttpRequest
 
-__init__()
-Protocol
-recv( client socket )
-getall()
-getarg()
-getpath()
-getsocket()
-__hash__()
-__eq__( other Request )
-
-
 Protocols
 =========
 
-* BlindHttpProtocol
-* StaticProtocol
-* HttpProtocol : TransferProtocol
-* FtpProtocol : TransferProtocol
-
-__init__( Request )
-Response
-getsocket()
-send( server socket )
-canjoin()
-cansend()
-
+* BlindProtocol
+* HttpProtocol
+* FtpProtocol
 
 Responses
 =========
 
 * BlindResponse
-* CacheResponse
+* DataResponse
+* ChunkedDataResponse
+* DirectResponse
 * NotFoundResponse
 * ExceptionResponse
-
-__init__( Protocol, Request )
-Done
-send()
-recv()
-cansend()
-canrecv()

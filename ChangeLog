@@ -3,11 +3,12 @@
   * replaced restrictive asyncore scheduler with new 'fiber' system
   * new feature: server-side download resuming
   * new feature: fpt support
-  * new feature: download rate limiting
+  * new feature: bandwidth shaping
   * new feature: ipv6 support
   * new feature: frozen transactions killed after configurable timeout
   * new feature: rudimentary off-line mode
-  * currently missing: cache browsing
+	* fixed race condition that prevented joining of simultaneously started downloads
+  * currently missing feature: cache browsing
 
 2004-11-27 version 3.0
   * new feature: cache brower on proxy address

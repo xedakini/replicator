@@ -1,0 +1,46 @@
+http-replicator-4.0alpha1
+-------------------------
+
+The first release in more than three years; result of my decision to give up on
+existing code and rewrite replicator from scratch. The new version breaks with
+python's built-in asyncore framework and replaces it with a much more flexible
+'fiber' scheduler based on python generators. For implementation details see
+README.devel which is included in the package. To the user the new flexibility
+shows as a long new features list, which includes often requested features such
+as server-side download resuming, ftp support, bandwidth shaping, ipv6 support.
+Known issues have been solved such as the frozen download problem and the race
+condition that prevented joining of simultaneously started downloads. Most of
+the old functionality is unchanged, except for cache browsing which will be
+restored in a later alpha release. For basic usuage instructions please see the
+README.user documentation.
+
+The server has been tested on OS X Leopard and Debian Etch, both i386
+architectures. Users with access to other platforms or architectures are highly
+encouraged to report their findings on the http-replicator-users mailing list.
+Note the unit-test script which checks replicator's functionality on 16
+different points, using standard gnu tools. Feature requests and general
+discussion are preferably sent to the mailing list as well.
+
+
+http-replicator-3.0
+-------------------
+
+No notes.
+
+
+http-replicator-2.1
+-------------------
+
+No notes.
+
+
+http-replicator-2.0
+-------------------
+
+No notes.
+
+
+http-replicator-1.0
+-------------------
+
+No notes.
