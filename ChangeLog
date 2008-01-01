@@ -7,7 +7,7 @@
   * new feature: ipv6 support
   * new feature: frozen transactions killed after configurable timeout
   * new feature: rudimentary off-line mode
-	* fixed race condition that prevented joining of simultaneously started downloads
+  * fixed race condition that prevented joining of simultaneously started downloads
   * currently missing feature: cache browsing
 
 2004-11-27 version 3.0

@@ -187,7 +187,7 @@ class HttpProtocol( Cache.File ):
       self.open_full()
       self.Response = Response.DataResponse
 
-    elif self.__status == 416 and self.partial():
+    elif self.__status in ( 403, 416 ) and self.partial():
 
       self.remove_partial()
       self.Response = Response.BlindResponse

@@ -41,14 +41,14 @@ that "a running fiber must explicitly 'yield' to allow another fiber to run".
 In practice - or at least, replicator's practice, one needs only assure that
 fibers yield right before every I/O operation, and are resumed only after this
 operation is guaranteed not to block. To this end, fibers communicate the
-current state of communication before yielding to the schedular. Three states
+current state of communication before yielding to the scheduler. Three states
 are supported:
 
  * RECV: fiber is awaiting data
  * SEND: fiber is queueing data
  * WAIT: fiber is sleeping
 
-Argument to the first two states is the target socket, which the schedular adds
+Argument to the first two states is the target socket, which the scheduler adds
 to the total pool of 'select' monitored sockets. The third state will either
 wake the fiber after a certain time (WAIT #seconds), wake together with the
 first other fiber to resume operation (WAIT None), or force a queue run (WAIT
@@ -68,12 +68,12 @@ to fibers except for its rigid framework. Indeed, the previous versions of
 replicator were based on this.
 
 A Python fiber terminates when either it returns or raises an exception. The
-schedular takes care that exceptions are handled without interfering with other
+scheduler takes care that exceptions are handled without interfering with other
 fibers and prints an error message or, optionally, a complete traceback message.
 As for printing, the default behaviour is to withhold all output until the fiber
 terminates in order to have a better view of past per-fiber operation. This
 behaviour can be changed to direct output. Fibers need not worry about this; it
-is all handled by the schedular which replaces sys.stdout with the configured
+is all handled by the scheduler which replaces sys.stdout with the configured
 printer upon fiber activation. This to prevent tedius passing around of various
 log objects.
 
