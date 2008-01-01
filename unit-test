@@ -283,6 +283,14 @@ case $1 in
     check_log "refusing to connect to server" "AssertionError: operating in off-line mode"
     stopserver
     ;;
+  16)
+    startserver --flat
+    http_proxy=localhost:$PORT download http://$URL_HTTP out
+    summary "DOWNLOADING NEW FILE, FLAT MODE"
+    check_log "serving complete file" "Replicator responds HTTP/1.1 200 OK"
+    check_exists "file cached and finalized" cache/`basename $URL_HTTP`
+    stopserver
+    ;;
   *)
     exit 1
     ;;

@@ -4,18 +4,19 @@ _args = iter( sys.argv )
 
 PROG = _args.next()
 PORT = 8080
-TIMEFMT = '%a, %d %b %Y %H:%M:%S GMT'
-MAXCHUNK = 1448 # maximum lan packet?
+ROOT = os.getcwd() + os.sep
+VERBOSE = 0
+TIMEOUT = 15
 FAMILY = socket.AF_INET
+FLAT = False
 STATIC = False
 ONLINE = True
-TIMEOUT = 15
-DEBUG = False
-VERBOSE = 0
 LIMIT = False
-ROOT = os.getcwd() + os.sep
-SUFFIX = '.incomplete'
 LOG = False
+DEBUG = False
+MAXCHUNK = 1448 # maximum lan packet?
+TIMEFMT = '%a, %d %b %Y %H:%M:%S GMT'
+SUFFIX = '.incomplete'
 USAGE = '''usage: %(PROG)s [options]
 
 options:
@@ -25,6 +26,7 @@ options:
   -v --verbose       show http headers and other info
   -t --timeout SEC   break connection after so many seconds of inactivity, default %(TIMEOUT)i
   -6 --ipv6          try ipv6 addresses if available
+     --flat          flat mode; cache all files in root directory (dangerous!)
      --static        static mode; assume files never change
      --offline       offline mode; never connect to server
      --limit RATE    limit download rate at a fixed K/s
@@ -59,6 +61,8 @@ for _arg in _args:
       sys.exit( 'Error: %s requires a positive numerical argument' % _arg )
   elif _arg in ( '-6', '--ipv6' ):
     FAMILY = socket.AF_UNSPEC
+  elif _arg == '--flat':
+    FLAT = True
   elif _arg == '--static':
     STATIC = True
   elif _arg == '--offline':

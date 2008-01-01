@@ -23,6 +23,8 @@ class File:
     sep = path.find( '?' )
     if sep != -1:
       path = path[ :sep ] + path[ sep: ].replace( '/', '%2F' )
+    if Params.FLAT:
+      path = os.path.basename( path )
     if Params.VERBOSE:
       print 'Cache position:', path
 

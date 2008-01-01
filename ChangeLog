@@ -1,0 +1,45 @@
+2008-01-01 version 4.0alpha1
+  * rewrite from scratch
+  * replaced restrictive asyncore scheduler with new 'fiber' system
+  * new feature: server-side download resuming
+  * new feature: fpt support
+  * new feature: download rate limiting
+  * new feature: ipv6 support
+  * new feature: frozen transactions killed after configurable timeout
+  * new feature: rudimentary off-line mode
+  * currently missing: cache browsing
+
+2004-11-27 version 3.0
+  * new feature: cache brower on proxy address
+  * new feature: client-side support for partial content
+  * added alias option for caching mirrors on same location
+  * added check to prevent access outside of cache through symlinks
+  * added header length restriction to fight infinite request server attacks
+  * created man pages for http-replicator and http-replicator_maintenance
+  * fixed timestamp bug; files are now properly closed before changing mtime
+  * suppressed size warning for chunked data
+
+2004-08-15 version 2.1
+  * integrated daemon code in http-replicator
+  * changed init.d and cron script to bash
+  * moved settings from configuration file to /etc/default/http-replicator
+  * introduced optparse module for command line parsing
+  * introduced logging module for output
+  * added support for an external proxy server
+  * added support for an external proxy requiring authentication
+
+2004-05-01 version 2.0
+  * added support for HTTP/1.1
+  * replicator is now suitable for maintaining a gentoo package cache
+  * fixed problem with absolute urls
+  * added posting support
+  * added support for servers that use LF in header instead of CRLF
+  * added a command line system
+  * fixed security issues
+  * improved traceback message for unhandled exceptions
+  * fixed problem with incomplete files after a server crash
+  * fixed problems with select
+  * fixed size calculation in cron script
+
+2004-02-06 version 1.0
+  * initial release.
