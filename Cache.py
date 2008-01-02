@@ -95,7 +95,8 @@ class File:
 
     size = self.tell()
     self.__file.close()
-    os.utime( self.__path + Params.SUFFIX, ( self.mtime, self.mtime ) )
+    if self.mtime >= 0:
+      os.utime( self.__path + Params.SUFFIX, ( self.mtime, self.mtime ) )
     if self.size == size:
       os.rename( self.__path + Params.SUFFIX, self.__path )
       print 'Finalized', self.__path
