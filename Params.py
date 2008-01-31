@@ -79,5 +79,3 @@ for _arg in _args:
     DEBUG = True
   else:
     sys.exit( 'Error: invalid option %r' % _arg )
-
-del _arg, _args

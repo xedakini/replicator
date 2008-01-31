@@ -133,6 +133,7 @@ class DebugFiber( Fiber ):
     if self.__newline:
       self.__stdout.write( '  %04X   ' % self.__id )
     self.__stdout.write( string )
+    self.__stdout.flush()
     self.__newline = string.endswith( '\n' )
 
 
@@ -194,7 +195,7 @@ def spawn( generator, port, debug, log ):
   else:
     myFiber = GatherFiber
 
-  print '  ....   HTTP Replicator started'
+  print '[ INIT ]', generator.__name__, 'started at %s:%i' % ( socket.gethostname(), port )
   try:
 
     fibers = []
@@ -250,9 +251,9 @@ def spawn( generator, port, debug, log ):
         trysend[ fileno ].step()
 
   except KeyboardInterrupt:
-    print '  ....   HTTP Replicator terminated'
+    print '[ DONE ]', generator.__name__, 'terminated'
     sys.exit( 0 )
   except:
-    print '  ....   HTTP Replicator crashed'
+    print '[ DONE ]', generator.__name__, 'crashed'
     traceback.print_exc( file=sys.stdout )
     sys.exit( 1 )
