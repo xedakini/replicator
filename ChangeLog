@@ -1,3 +1,11 @@
+2008-31-01 version 4.0alpha2
+  * added GPL licence file
+  * generalized fiber.py by using generator name instead of hardcoded string
+  * removing partial file in cache after 403 forbidden
+  * flushing every line in debug mode
+  * fix: no longer setting mtime to -1 if server does not send Last-Modified
+  * fix: handling empty command lines correctly
+
 2008-01-01 version 4.0alpha1
   * rewrite from scratch
   * replaced restrictive asyncore scheduler with new 'fiber' system

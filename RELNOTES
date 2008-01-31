@@ -1,3 +1,12 @@
+http-replicator-4.0alpha2
+-------------------------
+
+This release fixes an omission of the previous one: the inclusion of the GPL
+licence file. This clears the way for packaging initiatives on linux
+distributions and other operating systems. Other than this just minor fixes;
+the serious work unfortunately got lost on a crashed disk.
+
+
 http-replicator-4.0alpha1
 -------------------------
 
