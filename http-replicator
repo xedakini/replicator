@@ -11,10 +11,9 @@ def Replicator( client, address ):
 
   print 'Accepted request from %s:%i' % address
 
-  request = Request.HttpRequest()
-  while not request.Protocol:
-    yield fiber.RECV( client, Params.TIMEOUT )
-    request.recv( client )
+  request = Request.HttpRequest( client )
+  for state in request:
+    yield state
 
   try:
     while request in DOWNLOADS:

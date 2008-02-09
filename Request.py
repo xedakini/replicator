@@ -1,164 +1,150 @@
-import Params, Protocol, socket, os
+import Params, Protocol, socket, os, fiber
 
 
 class HttpRequest:
 
-  Protocol = None
+  def __init__( self, client ):
 
-  def __init__( self ):
+    self.client = client
 
-    self.__parse = self.__parse_head
-    self.__recvbuf = ''
+  def recv( self ):
 
-  def __parse_head( self, chunk ):
+    chunk = self.client.recv( Params.MAXCHUNK )
+    assert chunk, 'client closed connection prematurely'
+    return chunk
 
-    eol = chunk.find( '\n' ) + 1
-    if eol == 0:
-      return 0
+  def __iter__( self ):
 
-    line = chunk[ :eol ]
-    print 'Client sends', line.rstrip()
-    fields = line.split()
-    assert len( fields ) == 3, 'invalid header line: %r' % line
-    self.__cmd, self.__url, dummy = fields
-    self.__args = {}
-    self.__parse = self.__parse_args
+    return self.__parse()
 
-    return eol
+  def __parse( self ):
 
-  def __parse_args( self, chunk ):
+    recvbuf = ''
+    while '\n' not in recvbuf:
+      yield fiber.RECV( self.client, Params.TIMEOUT )
+      recvbuf += self.recv()
+    header, recvbuf = recvbuf.split( '\n', 1 )
+    print 'Client sends', header.rstrip()
 
-    eol = chunk.find( '\n' ) + 1
-    if eol == 0:
-      return 0
+    self.__parse_header( header )
 
-    line = chunk[ :eol ]
-    if ':' in line:
-      if Params.VERBOSE > 1:
-        print '>', line.rstrip()
-      key, value = line.split( ':', 1 )
-      key = key.title()
-      assert key not in self.__args, 'duplicate key: %s' % key
-      self.__args[ key ] = value.strip()
-    elif line in ( '\r\n', '\n' ):
-      self.__size = int( self.__args.get( 'Content-Length', 0 ) )
-      if self.__size:
-      	assert self.__cmd == 'POST', '%s request conflicts with message body' % self.__cmd
-        if Params.VERBOSE:
-          print 'Opening temporary file for POST upload'
-        self.__body = os.tmpfile()
-        self.__parse = self.__parse_body
+    args = {}
+    while True:
+      while '\n' not in recvbuf:
+        yield fiber.RECV( self.client, Params.TIMEOUT )
+        recvbuf += self.recv()
+      line, recvbuf = recvbuf.split( '\n', 1 )
+      if ':' in line:
+        if Params.VERBOSE > 1:
+          print '>', line.rstrip()
+        key, value = line.split( ':', 1 )
+        key = key.title()
+        assert key not in args, 'duplicate key: %s' % key
+        args[ key ] = value.strip()
+      elif line and line != '\r':
+        print 'Ignored header line: %r' % line.rstrip()
       else:
-        self.__body = None
-        self.__parse = None
+        break
+
+    self.__parse_args( args )
+
+    if self.size:
+      if Params.VERBOSE:
+        print 'Opening temporary file for POST upload'
+      self.body = os.tmpfile()
+      self.body.write( recvbuf )
+      while self.body.tell() < self.size:
+        yield fiber.RECV( self.client, Params.TIMEOUT )
+        self.body.write( self.recv() )
+      assert self.body.tell() == self.size, 'message body exceeds content-length'
     else:
-      print 'Ignored header line: %r' % line
+      assert not recvbuf, 'client sends junk data'
 
-    return eol
+  def __parse_header( self, line ):
 
-  def __parse_body( self, chunk ):
+    fields = line.split()
+    assert len( fields ) == 3, 'invalid header line: %r' % line.rstrip()
+    cmd, url, dummy = fields
 
-    self.__body.write( chunk )
-    assert self.__body.tell() <= self.__size, 'message body exceeds content-length'
-    if self.__body.tell() == self.__size:
-      self.__parse = None
-
-    return len( chunk )
-
-  def recv( self, sock ):
-
-    assert not self.Protocol
-
-    chunk = sock.recv( Params.MAXCHUNK )
-    assert chunk, 'client closed connection before sending a complete message header'
-    self.__recvbuf += chunk
-    while self.__parse:
-      bytes = self.__parse( self.__recvbuf )
-      if not bytes:
-        return
-      self.__recvbuf = self.__recvbuf[ bytes: ]
-    assert not self.__recvbuf, 'client sends junk data after message header'
-
-    if self.__url.startswith( 'http://' ):
-      host = self.__url[ 7: ]
+    if url.startswith( 'http://' ):
+      host = url[ 7: ]
       port = 80
-      if self.__cmd == 'GET':
-        self.Protocol = Protocol.HttpProtocol
+      if cmd == 'GET':
+        proto = Protocol.HttpProtocol
       else:
-        self.Protocol = Protocol.BlindProtocol
-    elif self.__url.startswith( 'ftp://' ):
-      assert self.__cmd == 'GET', '%s request unsupported for ftp' % self.__cmd
-      self.Protocol = Protocol.FtpProtocol
-      host = self.__url[ 6: ]
+        proto = Protocol.BlindProtocol
+    elif url.startswith( 'ftp://' ):
+      assert cmd == 'GET', '%s request unsupported for ftp' % cmd
+      proto = Protocol.FtpProtocol
+      host = url[ 6: ]
       port = 21
     else:
-      raise AssertionError, 'invalid url: %s' % self.__url
+      raise AssertionError, 'invalid url: %s' % url
+
     if '/' in host:
       host, path = host.split( '/', 1 )
     else:
       path = ''
+
     if ':' in host:
       host, port = host.split( ':' )
       port = int( port )
 
-    self.__host = host
-    self.__port = port
-    self.__path = path
-    self.__args[ 'Host' ] = host
-    self.__args[ 'Connection' ] = 'close'
-    self.__args.pop( 'Keep-Alive', None )
-    self.__args.pop( 'Proxy-Connection', None )
-    self.__args.pop( 'Proxy-Authorization', None )
+    self.cmd = cmd
+    self.addr = ( host, port )
+    self.path = path
+    self.cache = '%s:%i/%s' % ( host, port, path )
+    self.Protocol = proto
+
+  def __parse_args( self, args ):
+
+    size = int( args.get( 'Content-Length', 0 ) )
+    if size:
+      assert self.cmd == 'POST', '%s request conflicts with message body' % self.cmd
+
+    if 'Range' in args:
+      try:
+        rangestr = args[ 'Range' ]
+        assert rangestr.startswith( 'bytes=' )
+        beg, end = rangestr[ 6: ].split( '-' )
+        if not beg:
+          range = int( end ), -1 # FIX!
+        elif not end:
+          range = int( beg ), -1
+        else:
+          range = int( beg ), int( end ) + 1
+      except:
+        raise AssertionError, 'invalid range specification: %s' % range
+    else:
+      range = 0, -1
+
+    args[ 'Host' ] = self.addr[ 0 ]
+    args[ 'Connection' ] = 'close'
+    args.pop( 'Keep-Alive', None )
+    args.pop( 'Proxy-Connection', None )
+    args.pop( 'Proxy-Authorization', None )
+
+    self.args = args
+    self.size = size
+    self.range = range
 
   def recvbuf( self ):
 
-    assert self.Protocol
-    lines = [ '%s /%s HTTP/1.1' % ( self.__cmd, self.__path ) ]
-    lines.extend( map( ': '.join, self.__args.items() ) )
+    lines = [ '%s /%s HTTP/1.1' % ( self.cmd, self.path ) ]
+    lines.extend( map( ': '.join, self.args.items() ) )
     lines.append( '' )
-    if self.__body:
-      self.__body.seek( 0 )
-      lines.append( self.__body.read() )
+    if self.size:
+      self.body.seek( 0 )
+      lines.append( self.body.read() )
     else:
       lines.append( '' )
 
     return '\r\n'.join( lines )
 
-  def url( self ):
-
-    assert self.Protocol
-    return self.__host, self.__port, self.__path
-
-  def args( self ):
-
-    assert self.Protocol
-    return self.__args.copy()
-
-  def range( self ):
-
-    range = self.__args.get( 'Range' )
-    if not range:
-      return 0, -1
-    try:
-      assert range.startswith( 'bytes=' )
-      beg, end = range[ 6: ].split( '-' )
-      if not beg:
-        return int( end ), -1
-      elif not end:
-        return int( beg ), -1
-      else:
-        return int( beg ), int( end ) + 1
-    except:
-      raise AssertionError, 'invalid range specification: %s' % range
-
   def __hash__( self ):
 
-    assert self.Protocol
-    return hash( self.__path )
+    return hash( self.cache )
 
   def __eq__( self, other ):
 
-    assert self.Protocol
-    request1 = self.__cmd,  self.__host,  self.__port,  self.__path
-    request2 = other.__cmd, other.__host, other.__port, other.__path
-    return request1 == request2
+    assert self.cache == other.cache

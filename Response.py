@@ -40,7 +40,7 @@ class DataResponse:
   def __init__( self, protocol, request ):
 
     self.__protocol = protocol
-    self.__pos, self.__end = request.range()
+    self.__pos, self.__end = request.range
     if self.__end == -1:
       self.__end = self.__protocol.size
 

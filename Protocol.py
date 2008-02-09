@@ -27,7 +27,7 @@ class BlindProtocol:
 
   def __init__( self, request ):
 
-    self.__socket = connect( request.url()[ :2 ] )
+    self.__socket = connect( request.addr )
     self.__sendbuf = request.recvbuf()
 
   def socket( self ):
@@ -60,7 +60,7 @@ class HttpProtocol( Cache.File ):
 
   def __init__( self, request ):
 
-    Cache.File.__init__( self, '%s:%i/%s' % request.url() )
+    Cache.File.__init__( self, request.cache )
 
     if Params.STATIC and self.full():
       print 'Static mode; serving file directly from cache'
@@ -69,8 +69,8 @@ class HttpProtocol( Cache.File ):
       self.Response = Response.DataResponse
       return
 
-    head = 'GET /%s HTTP/1.1' % request.url()[ 2 ]
-    args = request.args()
+    head = 'GET /%s HTTP/1.1' % request.path
+    args = request.args.copy()
     args.pop( 'Accept-Encoding', None )
     args.pop( 'Range', None )
     stat = self.partial() or self.full()
@@ -85,7 +85,7 @@ class HttpProtocol( Cache.File ):
         print 'Checking complete file in cache: %i bytes, %s' % ( size, mtime )
         args[ 'If-Modified-Since' ] = mtime
 
-    self.__socket = connect( request.url()[ :2 ] )
+    self.__socket = connect( request.addr )
     self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
     self.__recvbuf = ''
     self.__parse = HttpProtocol.__parse_head
@@ -215,7 +215,7 @@ class FtpProtocol( Cache.File ):
 
   def __init__( self, request ):
 
-    Cache.File.__init__( self, '%s:%i/%s' % request.url() )
+    Cache.File.__init__( self, request.cache )
 
     if Params.STATIC and self.full():
       self.__socket = None
@@ -223,9 +223,8 @@ class FtpProtocol( Cache.File ):
       self.Response = Response.DataResponse
       return
 
-    host, port, path = request.url()
-    self.__socket = connect(( host, port ))
-    self.__path = path
+    self.__socket = connect( request.addr )
+    self.__path = request.path
     self.__sendbuf = ''
     self.__recvbuf = ''
     self.__handle = FtpProtocol.__handle_serviceready
