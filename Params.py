@@ -15,7 +15,7 @@ LIMIT = False
 LOG = False
 DEBUG = False
 MAXCHUNK = 1448 # maximum lan packet?
-TIMEFMT = '%a, %d %b %Y %H:%M:%S GMT'
+TIMEFMT = ('%a, %d %b %Y %H:%M:%S GMT', '%a, %d %b %Y %H:%M:%S +0000 GMT', '%a, %d %b %Y %H:%M:%S +0000')
 SUFFIX = '.incomplete'
 USAGE = '''usage: %(PROG)s [options]
 
@@ -79,3 +79,5 @@ for _arg in _args:
     DEBUG = True
   else:
     sys.exit( 'Error: invalid option %r' % _arg )
+
+MAXFILELEN = os.pathconf( ROOT, 'PC_NAME_MAX' ) - len(SUFFIX)

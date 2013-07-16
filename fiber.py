@@ -160,7 +160,8 @@ def fork( output ):
   try: 
     os.chdir( os.sep )
     os.setsid() 
-    os.umask( 0 )
+    # -rw-r--r-- / 0644 / u=rw,go=r
+    os.umask( 0022 )
     pid = os.fork()
   except Exception, e: 
     print 'error:', e

@@ -49,9 +49,9 @@ class DataResponse:
     except:
       args = {}
     args[ 'Connection' ] = 'close'
-    args[ 'Date' ] = time.strftime( Params.TIMEFMT, time.gmtime() )
+    args[ 'Date' ] = time.strftime( Params.TIMEFMT[0], time.gmtime() )
     if self.__protocol.mtime >= 0:
-      args[ 'Last-Modified' ] = time.strftime( Params.TIMEFMT, time.gmtime( self.__protocol.mtime ) )
+      args[ 'Last-Modified' ] = time.strftime( Params.TIMEFMT[0], time.gmtime( self.__protocol.mtime ) )
     if self.__pos == 0 and self.__end == self.__protocol.size:
       head = 'HTTP/1.1 200 OK'
       if self.__protocol.size >= 0:

@@ -76,7 +76,7 @@ class HttpProtocol( Cache.File ):
     stat = self.partial() or self.full()
     if stat:
       size = stat.st_size
-      mtime = time.strftime( Params.TIMEFMT, time.gmtime( stat.st_mtime ) )
+      mtime = time.strftime( Params.TIMEFMT[0], time.gmtime( stat.st_mtime ) )
       if self.partial():
         print 'Requesting resume of partial file in cache: %i bytes, %s' % ( size, mtime )
         args[ 'Range' ] = 'bytes=%i-' % size
@@ -160,7 +160,17 @@ class HttpProtocol( Cache.File ):
 
       self.open_new()
       if 'Last-Modified' in self.__args:
-        self.mtime = calendar.timegm( time.strptime( self.__args[ 'Last-Modified' ], Params.TIMEFMT ) )
+        for timefmt in Params.TIMEFMT:
+          try:
+            mtime = calendar.timegm( time.strptime( self.__args[ 'Last-Modified' ], timefmt ) )
+          except ValueError:
+            pass # try next time format string
+          else: # time format string worked, so ignore remaining time format strings
+            self.mtime = mtime
+            break
+        else: # all time format strings failed
+          # raise exception presumably similar to above silenced exception
+          raise ValueError("time data '%s' does not match formats %s" % (self.__args[ 'Last-Modified' ], ', '.join("'%s'" % timefmt for timefmt in Params.TIMEFMT)))
       if 'Content-Length' in self.__args:
         self.size = int( self.__args[ 'Content-Length' ] )
       if self.__args.pop( 'Transfer-Encoding', None ) == 'chunked':
@@ -313,7 +323,7 @@ class FtpProtocol( Cache.File ):
 
     assert code == 213, 'server sends %i; expected 213 (file status)' % code
     self.mtime = calendar.timegm( time.strptime( line.rstrip(), '%Y%m%d%H%M%S' ) )
-    print 'Modification time:', time.strftime( Params.TIMEFMT, time.gmtime( self.mtime ) )
+    print 'Modification time:', time.strftime( Params.TIMEFMT[0], time.gmtime( self.mtime ) )
     stat = self.partial()
     if stat and stat.st_mtime == self.mtime:
       self.__sendbuf = 'REST %i\r\n' % stat.st_size

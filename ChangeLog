@@ -1,3 +1,10 @@
+xxxx-xx-xx
+  * changed umask to 022
+      (Corey Wright: umask.patch)
+  * relaxed timefmt constraints in http header
+      (Corey Wright: multiple_last-modified_header_formats.patch)
+  * fixed long filename issue by hashing excess length
+
 2008-31-01 version 4.0alpha2
   * added GPL licence file
   * generalized fiber.py by using generator name instead of hardcoded string
