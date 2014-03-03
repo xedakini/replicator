@@ -26,8 +26,6 @@ class HttpRequest:
     header, recvbuf = recvbuf.split( '\n', 1 )
     print 'Client sends', header.rstrip()
 
-    self.__parse_header( header )
-
     args = {}
     while True:
       while '\n' not in recvbuf:
@@ -46,6 +44,7 @@ class HttpRequest:
       else:
         break
 
+    self.__parse_header( header, args )
     self.__parse_args( args )
 
     if self.size:
@@ -60,7 +59,10 @@ class HttpRequest:
     else:
       assert not recvbuf, 'client sends junk data'
 
-  def __parse_header( self, line ):
+  def __parse_header( self, line, args=None ):
+
+    if not args:
+      args=dict()
 
     fields = line.split()
     assert len( fields ) == 3, 'invalid header line: %r' % line.rstrip()
@@ -78,6 +80,14 @@ class HttpRequest:
       proto = Protocol.FtpProtocol
       host = url[ 6: ]
       port = 21
+    elif url.startswith('/'):
+      # fallback - handling transparent proxy requests
+      port = 80
+      host = args.get('Host')
+      if cmd == 'GET':
+        proto = Protocol.HttpProtocol
+      else:
+        proto = Protocol.BlindProtocol      
     else:
       raise AssertionError, 'invalid url: %s' % url
 
@@ -148,3 +158,4 @@ class HttpRequest:
   def __eq__( self, other ):
 
     assert self.cache == other.cache
+    
