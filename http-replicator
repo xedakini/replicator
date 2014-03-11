@@ -9,7 +9,7 @@ DOWNLOADS = weakref.WeakValueDictionary()
 
 def Replicator( client, address ):
 
-  print 'Accepted request from %s:%i' % address
+  print 'Accepted request from [%s]:%i' % address[0:2]
 
   request = Request.HttpRequest( client )
   for state in request:
@@ -59,4 +59,4 @@ def Replicator( client, address ):
   print 'Transaction successfully completed'
 
 
-fiber.spawn( Replicator, Params.PORT, Params.DEBUG, Params.LOG )
+fiber.spawn( Replicator, Params.PORT, Params.DEBUG, Params.LOG, Params.LISTENFAMILY )

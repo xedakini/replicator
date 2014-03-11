@@ -176,10 +176,10 @@ def fork( output ):
   os.dup2( nul.fileno(), sys.stdin.fileno()  )
 
 
-def spawn( generator, port, debug, log ):
+def spawn( generator, port, debug, log, listenfamily ):
 
   try:
-    listener = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
+    listener = socket.socket( listenfamily, socket.SOCK_STREAM )
     listener.setblocking( 0 )
     listener.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, listener.getsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR ) | 1 )
     listener.bind( ( '', port ) )

@@ -8,6 +8,7 @@ ROOT = os.getcwd() + os.sep
 VERBOSE = 0
 TIMEOUT = 15
 FAMILY = socket.AF_INET
+LISTENFAMILY = socket.AF_INET
 FLAT = False
 STATIC = False
 ONLINE = True
@@ -61,6 +62,7 @@ for _arg in _args:
       sys.exit( 'Error: %s requires a positive numerical argument' % _arg )
   elif _arg in ( '-6', '--ipv6' ):
     FAMILY = socket.AF_UNSPEC
+    LISTENFAMILY = socket.AF_INET6
   elif _arg == '--flat':
     FLAT = True
   elif _arg == '--static':
