@@ -52,7 +52,7 @@ class Fiber:
       if throw:
         assert hasattr( self.__generator, 'throw' ), throw
         self.__generator.throw( AssertionError, throw )
-      state = self.__generator.next()
+      state = next(self.__generator)
       assert isinstance( state, (SEND, RECV, WAIT) ), 'invalid waiting state %r' % state
       self.state = state
     except KeyboardInterrupt:

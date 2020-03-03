@@ -4,7 +4,7 @@ import sys, os, socket
 
 _args = iter( sys.argv )
 
-PROG = _args.next()
+PROG = next(_args)
 PORT = 8080
 ROOT = os.getcwd() + os.sep
 VERBOSE = 0
@@ -41,13 +41,13 @@ for _arg in _args:
     sys.exit( USAGE )
   elif _arg in ( '-p', '--port' ):
     try:
-      PORT = int( _args.next() )
+      PORT = int( next(_args) )
       assert PORT > 0
     except:
       sys.exit( 'Error: %s requires a positive numerical argument' % _arg )
   elif _arg in ( '-r', '--root' ):
     try:
-      ROOT = os.path.realpath( _args.next() ) + os.sep
+      ROOT = os.path.realpath( next(_args) ) + os.sep
       assert os.path.isdir( ROOT )
     except StopIteration:
       sys.exit( 'Error: %s requires a directory argument' % _arg )
@@ -57,7 +57,7 @@ for _arg in _args:
     VERBOSE += 1
   elif _arg in ( '-t', '--timeout' ):
     try:
-      TIMEOUT = int( _args.next() )
+      TIMEOUT = int( next(_args) )
       assert TIMEOUT > 0
     except:
       sys.exit( 'Error: %s requires a positive numerical argument' % _arg )
@@ -72,11 +72,11 @@ for _arg in _args:
     STATIC = True
   elif _arg == '--limit':
     try:
-      LIMIT = float( _args.next() ) * 1024
+      LIMIT = float( next(_args) ) * 1024
     except:
       sys.exit( 'Error: %s requires a numerical argument' % _arg )
   elif _arg == '--daemon':
-    LOG = _args.next()
+    LOG = next(_args)
   elif _arg == '--debug':
     DEBUG = True
   else:
