@@ -8,7 +8,7 @@ def makedirs( path ):
   dir = os.path.dirname( path )
   if dir and not os.path.isdir( dir ):
     if os.path.isfile( dir ):
-      print 'directory %s mistaken for file' % dir
+      print('directory %s mistaken for file' % dir)
       os.remove( dir )
     else:
       makedirs( dir )
@@ -27,7 +27,7 @@ class File:
         item[:Params.MAXFILELEN-34] + '..' + hashlib.md5( item[Params.MAXFILELEN-34:] ).hexdigest()
           for item in path.split( os.sep ) )
       if newpath != path:
-        print 'Shortened path to %s characters' % '/'.join( str(len(w)) for w in newpath.split(os.sep) )
+        print('Shortened path to %s characters' % '/'.join( str(len(w)) for w in newpath.split(os.sep) ))
         path = newpath
 
     sep = path.find( '?' )
@@ -36,7 +36,7 @@ class File:
     if Params.FLAT:
       path = os.path.basename( path )
     if Params.VERBOSE:
-      print 'Cache position:', path
+      print('Cache position:', path)
 
     self.__path = Params.ROOT + path
     self.__file = None
@@ -51,12 +51,12 @@ class File:
 
   def open_new( self ):
 
-    print 'Preparing new file in cache'
+    print('Preparing new file in cache')
     try:
       makedirs( self.__path )
       self.__file = open( self.__path + Params.SUFFIX, 'w+' )
     except Exception, e:
-      print 'Failed to open file:', e
+      print('Failed to open file:', e)
       self.__file = os.tmpfile()
 
   def open_partial( self, offset=-1 ):
@@ -67,23 +67,23 @@ class File:
       assert offset <= self.tell(), 'range does not match file in cache'
       self.__file.seek( offset )
       self.__file.truncate()
-    print 'Resuming partial file in cache at byte', self.tell()
+    print('Resuming partial file in cache at byte', self.tell())
 
   def open_full( self ):
 
     self.mtime = os.stat( self.__path ).st_mtime
     self.__file = open( self.__path, 'r' )
     self.size = self.tell()
-    print 'Reading complete file from cache'
+    print('Reading complete file from cache')
 
   def remove_full( self ):
 
     os.remove( self.__path )
-    print 'Removed complete file from cache'
+    print('Removed complete file from cache')
 
   def remove_partial( self ):
 
-    print 'Removed partial file from cache'
+    print('Removed partial file from cache')
     os.remove( self.__path + Params.SUFFIX )
 
   def read( self, pos, size ):
@@ -109,7 +109,7 @@ class File:
       os.utime( self.__path + Params.SUFFIX, ( self.mtime, self.mtime ) )
     if self.size == size:
       os.rename( self.__path + Params.SUFFIX, self.__path )
-      print 'Finalized', self.__path
+      print('Finalized', self.__path)
 
   def __del__( self ):
 

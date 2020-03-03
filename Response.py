@@ -70,10 +70,10 @@ class DataResponse:
       args[ 'Content-Range' ] = 'bytes */*'
       args[ 'Content-Length' ] = '0'
 
-    print 'Replicator responds', head
+    print('Replicator responds', head)
     if Params.VERBOSE > 1:
       for key in args:
-        print '> %s: %s' % ( key, args[ key ].replace( '\r\n', ' > ' ) )
+        print('> %s: %s' % ( key, args[ key ].replace( '\r\n', ' > ' ) ))
 
     self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
     if Params.LIMIT:
@@ -121,7 +121,7 @@ class DataResponse:
         assert self.__protocol.size == self.__protocol.tell(), 'connection closed prematurely'
       else:
         self.__protocol.size = self.__protocol.tell()
-        print 'Connection closed at byte', self.__protocol.size
+        print('Connection closed at byte', self.__protocol.size)
       self.Done = not self.hasdata()
 
 
@@ -144,14 +144,14 @@ class ChunkedDataResponse( DataResponse ):
       chunksize = int( head.split( ';' )[ 0 ], 16 )
       if chunksize == 0:
         self.__protocol.size = self.__protocol.tell()
-        print 'Connection closed at byte', self.__protocol.size
+        print('Connection closed at byte', self.__protocol.size)
         self.Done = not self.hasdata()
         return
       if len( tail ) < chunksize + 2:
         return
       assert tail[ chunksize:chunksize+2 ] == '\r\n', 'chunked data error: chunk does not match announced size'
       if Params.VERBOSE > 1:
-        print 'Received', chunksize, 'byte chunk'
+        print('Received', chunksize, 'byte chunk')
       self.__protocol.write( tail[ :chunksize ] )
       self.__recvbuf = tail[ chunksize+2: ]
 

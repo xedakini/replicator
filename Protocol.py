@@ -10,12 +10,12 @@ def connect( addr ):
   assert Params.ONLINE, 'operating in off-line mode'
   if addr not in DNSCache:
     if Params.VERBOSE:
-      print 'Requesting address info for %s:%i' % addr
+      print('Requesting address info for %s:%i' % addr)
     DNSCache[ addr ] = socket.getaddrinfo( addr[ 0 ], addr[ 1 ], Params.FAMILY, socket.SOCK_STREAM )
 
   family, socktype, proto, canonname, sockaddr = DNSCache[ addr ][ 0 ]
 
-  print 'Connecting to %s:%i' % sockaddr
+  print('Connecting to %s:%i' % sockaddr)
   sock = socket.socket( family, socktype, proto )
   sock.setblocking( 0 )
   sock.connect_ex( sockaddr )
@@ -65,7 +65,7 @@ class HttpProtocol( Cache.File ):
     Cache.File.__init__( self, request.cache )
 
     if Params.STATIC and self.full():
-      print 'Static mode; serving file directly from cache'
+      print('Static mode; serving file directly from cache')
       self.__socket = None
       self.open_full()
       self.Response = Response.DataResponse
@@ -80,11 +80,11 @@ class HttpProtocol( Cache.File ):
       size = stat.st_size
       mtime = time.strftime( Params.TIMEFMT[0], time.gmtime( stat.st_mtime ) )
       if self.partial():
-        print 'Requesting resume of partial file in cache: %i bytes, %s' % ( size, mtime )
+        print('Requesting resume of partial file in cache: %i bytes, %s' % ( size, mtime ))
         args[ 'Range' ] = 'bytes=%i-' % size
         args[ 'If-Range' ] = mtime
       else:
-        print 'Checking complete file in cache: %i bytes, %s' % ( size, mtime )
+        print('Checking complete file in cache: %i bytes, %s' % ( size, mtime ))
         args[ 'If-Modified-Since' ] = mtime
 
     self.__socket = connect( request.addr )
@@ -110,7 +110,7 @@ class HttpProtocol( Cache.File ):
       return 0
 
     line = chunk[ :eol ]
-    print 'Server responds', line.rstrip()
+    print('Server responds', line.rstrip())
     fields = line.split()
     assert len( fields ) >= 3 and fields[ 0 ].startswith( 'HTTP/' ) and fields[ 1 ].isdigit(), 'invalid header line: %r' % line
     self.__status = int( fields[ 1 ] )
@@ -129,7 +129,7 @@ class HttpProtocol( Cache.File ):
     line = chunk[ :eol ]
     if ':' in line:
       if Params.VERBOSE > 1:
-        print '>', line.rstrip()
+        print('>', line.rstrip())
       key, value = line.split( ':', 1 )
       key = key.title()
       if key in self.__args:
@@ -139,7 +139,7 @@ class HttpProtocol( Cache.File ):
     elif line in ( '\r\n', '\n' ):
       self.__parse = None
     else:
-      print 'Ignored header line:', line
+      print('Ignored header line:', line)
 
     return eol
 
@@ -266,11 +266,11 @@ class FtpProtocol( Cache.File ):
     while '\n' in self.__recvbuf:
       reply, self.__recvbuf = self.__recvbuf.split( '\n', 1 )
       if Params.VERBOSE > 1:
-        print 'S:', reply.rstrip()
+        print('S:', reply.rstrip())
       if reply[ :3 ].isdigit() and reply[ 3 ] != '-':
         self.__handle( self, int( reply[ :3 ] ), reply[ 4: ] )
         if self.__sendbuf and Params.VERBOSE > 1:
-          print 'C:', self.__sendbuf.rstrip()
+          print('C:', self.__sendbuf.rstrip())
 
   def __handle_serviceready( self, code, line ):
 
@@ -313,7 +313,7 @@ class FtpProtocol( Cache.File ):
 
     assert code == 213, 'server sends %i; expected 213 (file status)' % code
     self.size = int( line )
-    print 'File size:', self.size
+    print('File size:', self.size)
     self.__sendbuf = 'MDTM %s\r\n' % self.__path
     self.__handle = FtpProtocol.__handle_mtime
 
@@ -325,7 +325,7 @@ class FtpProtocol( Cache.File ):
 
     assert code == 213, 'server sends %i; expected 213 (file status)' % code
     self.mtime = calendar.timegm( time.strptime( line.rstrip(), '%Y%m%d%H%M%S' ) )
-    print 'Modification time:', time.strftime( Params.TIMEFMT[0], time.gmtime( self.mtime ) )
+    print('Modification time:', time.strftime( Params.TIMEFMT[0], time.gmtime( self.mtime ) ))
     stat = self.partial()
     if stat and stat.st_mtime == self.mtime:
       self.__sendbuf = 'REST %i\r\n' % stat.st_size

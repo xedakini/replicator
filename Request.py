@@ -26,7 +26,7 @@ class HttpRequest:
       yield fiber.RECV( self.client, Params.TIMEOUT )
       recvbuf += self.recv()
     header, recvbuf = recvbuf.split( '\n', 1 )
-    print 'Client sends', header.rstrip()
+    print('Client sends', header.rstrip())
 
     self.__parse_header( header )
 
@@ -38,13 +38,13 @@ class HttpRequest:
       line, recvbuf = recvbuf.split( '\n', 1 )
       if ':' in line:
         if Params.VERBOSE > 1:
-          print '>', line.rstrip()
+          print('>', line.rstrip())
         key, value = line.split( ':', 1 )
         key = key.title()
         assert key not in args, 'duplicate key: %s' % key
         args[ key ] = value.strip()
       elif line and line != '\r':
-        print 'Ignored header line: %r' % line.rstrip()
+        print('Ignored header line: %r' % line.rstrip())
       else:
         break
 
@@ -52,7 +52,7 @@ class HttpRequest:
 
     if self.size:
       if Params.VERBOSE:
-        print 'Opening temporary file for POST upload'
+        print('Opening temporary file for POST upload')
       self.body = os.tmpfile()
       self.body.write( recvbuf )
       while self.body.tell() < self.size:

@@ -61,7 +61,7 @@ class Fiber:
       del self.__generator
       pass
     except AssertionError, msg:
-      print 'Error:', msg
+      print('Error:', msg)
     except:
       traceback.print_exc()
 
@@ -125,7 +125,7 @@ class DebugFiber( Fiber ):
       sys.stdout = sys.stderr = self
       Fiber.step( self, throw )
       if self.state:
-        print 'Waiting at', self
+        print('Waiting at', self)
     finally:
       sys.stdout = stdout
       sys.stderr = stderr
@@ -146,13 +146,13 @@ def fork( output ):
     nul = open( '/dev/null', 'r' )
     pid = os.fork()
   except IOError, e:
-    print 'error: failed to open', e.filename
+    print('error: failed to open', e.filename)
     sys.exit( 1 )
   except OSError, e:
-    print 'error: failed to fork process:', e.strerror
+    print('error: failed to fork process:', e.strerror)
     sys.exit( 1 )
   except Exception, e:
-    print 'error:', e
+    print('error:', e)
     sys.exit( 1 )
 
   if pid:
@@ -166,11 +166,11 @@ def fork( output ):
     os.umask( 0022 )
     pid = os.fork()
   except Exception, e: 
-    print 'error:', e
+    print('error:', e)
     sys.exit( 1 )
 
   if pid:
-    print pid
+    print(pid)
     sys.exit( 0 )
 
   os.dup2( log.fileno(), sys.stdout.fileno() )
@@ -187,7 +187,7 @@ def spawn( generator, port, debug, log ):
     listener.bind( ( '', port ) )
     listener.listen( 5 )
   except Exception, e:
-    print 'error: failed to create socket:', e
+    print('error: failed to create socket:', e)
     sys.exit( 1 )
 
   if log:
@@ -198,7 +198,7 @@ def spawn( generator, port, debug, log ):
   else:
     myFiber = GatherFiber
 
-  print '[ INIT ]', generator.__name__, 'started at %s:%i' % ( socket.gethostname(), port )
+  print('[ INIT ]', generator.__name__, 'started at %s:%i' % ( socket.gethostname(), port ))
   try:
 
     fibers = []
@@ -237,10 +237,10 @@ def spawn( generator, port, debug, log ):
           expire = state.expire
 
       if expire is None:
-        print '[ IDLE ]', time.ctime()
+        print('[ IDLE ]', time.ctime())
         sys.stdout.flush()
         canrecv, cansend, dummy = select.select( tryrecv, trysend, [] )
-        print '[ BUSY ]', time.ctime()
+        print('[ BUSY ]', time.ctime())
         sys.stdout.flush()
       else:
         canrecv, cansend, dummy = select.select( tryrecv, trysend, [], max( expire - now, 0 ) )
@@ -254,9 +254,9 @@ def spawn( generator, port, debug, log ):
         trysend[ fileno ].step()
 
   except KeyboardInterrupt:
-    print '[ DONE ]', generator.__name__, 'terminated'
+    print('[ DONE ]', generator.__name__, 'terminated')
     sys.exit( 0 )
   except:
-    print '[ DONE ]', generator.__name__, 'crashed'
+    print('[ DONE ]', generator.__name__, 'crashed')
     traceback.print_exc( file=sys.stdout )
     sys.exit( 1 )
