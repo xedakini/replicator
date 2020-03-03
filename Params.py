@@ -82,4 +82,4 @@ for _arg in _args:
   else:
     sys.exit( 'Error: invalid option %r' % _arg )
 
-MAXFILELEN = os.pathconf( ROOT, 'PC_NAME_MAX' ) - len(SUFFIX)
+MAXFILELEN = os.pathconf( ROOT, b'PC_NAME_MAX' ) - len(SUFFIX)
