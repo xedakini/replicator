@@ -75,7 +75,7 @@ class DataResponse:
       for key in args:
         print('> %s: %s' % ( key, args[ key ].replace( '\r\n', ' > ' ) ))
 
-    self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
+    self.__sendbuf = '\r\n'.join( [ head ] + list(map( ': '.join, iter(args.items()) )) + [ '', '' ] )
     if Params.LIMIT:
       self.__nextrecv = 0
 

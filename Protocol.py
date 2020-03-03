@@ -88,7 +88,7 @@ class HttpProtocol( Cache.File ):
         args[ 'If-Modified-Since' ] = mtime
 
     self.__socket = connect( request.addr )
-    self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
+    self.__sendbuf = '\r\n'.join( [ head ] + list(map( ': '.join, iter(args.items()) )) + [ '', '' ] )
     self.__recvbuf = ''
     self.__parse = HttpProtocol.__parse_head
 
@@ -210,7 +210,7 @@ class HttpProtocol( Cache.File ):
 
   def recvbuf( self ):
 
-    return '\r\n'.join( [ 'HTTP/1.1 %i %s' % ( self.__status, self.__message ) ] + map( ': '.join, self.__args.items() ) + [ '', '' ] )
+    return '\r\n'.join( [ 'HTTP/1.1 %i %s' % ( self.__status, self.__message ) ] + list(map( ': '.join, iter(self.__args.items()) )) + [ '', '' ] )
 
   def args( self ):
 

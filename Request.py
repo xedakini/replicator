@@ -133,7 +133,7 @@ class HttpRequest:
   def recvbuf( self ):
 
     lines = [ '%s /%s HTTP/1.1' % ( self.cmd, self.path ) ]
-    lines.extend( map( ': '.join, self.args.items() ) )
+    lines.extend( list(map( ': '.join, self.args.items() )) )
     lines.append( '' )
     if self.size:
       self.body.seek( 0 )
