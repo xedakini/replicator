@@ -55,7 +55,7 @@ class File:
     try:
       makedirs( self.__path )
       self.__file = open( self.__path + Params.SUFFIX, 'w+' )
-    except Exception, e:
+    except Exception as e:
       print('Failed to open file:', e)
       self.__file = os.tmpfile()
 

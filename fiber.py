@@ -60,7 +60,7 @@ class Fiber:
     except StopIteration:
       del self.__generator
       pass
-    except AssertionError, msg:
+    except AssertionError as msg:
       print('Error:', msg)
     except:
       traceback.print_exc()
@@ -145,13 +145,13 @@ def fork( output ):
     log = open( output, 'w' )
     nul = open( '/dev/null', 'r' )
     pid = os.fork()
-  except IOError, e:
+  except IOError as e:
     print('error: failed to open', e.filename)
     sys.exit( 1 )
-  except OSError, e:
+  except OSError as e:
     print('error: failed to fork process:', e.strerror)
     sys.exit( 1 )
-  except Exception, e:
+  except Exception as e:
     print('error:', e)
     sys.exit( 1 )
 
@@ -165,7 +165,7 @@ def fork( output ):
     # -rw-r--r-- / 0644 / u=rw,go=r
     os.umask( 0022 )
     pid = os.fork()
-  except Exception, e: 
+  except Exception as e: 
     print('error:', e)
     sys.exit( 1 )
 
@@ -186,7 +186,7 @@ def spawn( generator, port, debug, log ):
     listener.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, listener.getsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR ) | 1 )
     listener.bind( ( '', port ) )
     listener.listen( 5 )
-  except Exception, e:
+  except Exception as e:
     print('error: failed to create socket:', e)
     sys.exit( 1 )
 
