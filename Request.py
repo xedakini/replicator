@@ -81,7 +81,7 @@ class HttpRequest:
       host = url[ 6: ]
       port = 21
     else:
-      raise AssertionError, 'invalid url: %s' % url
+      raise AssertionError('invalid url: %s' % url)
 
     if '/' in host:
       host, path = host.split( '/', 1 )
@@ -116,7 +116,7 @@ class HttpRequest:
         else:
           range = int( beg ), int( end ) + 1
       except:
-        raise AssertionError, 'invalid range specification: %s' % range
+        raise AssertionError('invalid range specification: %s' % range)
     else:
       range = 0, -1
 
