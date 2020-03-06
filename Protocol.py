@@ -11,7 +11,7 @@ def connect( addr ):
   if addr not in DNSCache:
     if Params.VERBOSE:
       print('Requesting address info for %s:%i' % addr)
-    DNSCache[ addr ] = socket.getaddrinfo( addr[ 0 ], addr[ 1 ], Params.FAMILY, socket.SOCK_STREAM )
+    DNSCache[ addr ] = socket.getaddrinfo( addr[ 0 ], addr[ 1 ], socket.AF_UNSPEC, socket.SOCK_STREAM )
 
   family, socktype, proto, canonname, sockaddr = DNSCache[ addr ][ 0 ]
 
