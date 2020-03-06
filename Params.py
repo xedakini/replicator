@@ -1,85 +1,66 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
-import six
-import sys, os, socket
+import argparse, sys, os
 
-_args = iter( sys.argv )
+def port_number(s):
+    port = int(s)
+    if 0 < port < 65536:
+        return port
+    raise argparse.ArgumentTypeError('PORT must be integer in interval [1, 65535]')
 
-PROG = next(_args)
-PORT = 8080
-ROOT = os.getcwd() + os.sep
-VERBOSE = 0
-TIMEOUT = 15
-FAMILY = socket.AF_INET
-FLAT = False
-STATIC = False
-ONLINE = True
-LIMIT = False
-LOG = False
-DEBUG = False
+def positive_number(s):
+    x = float(s)
+    if x <= 0:
+        raise argparse.ArgumentTypeError('value must be a positive number')
+    return x
+
+
+parser = argparse.ArgumentParser(description = 'http-replicator: a caching http proxy')
+
+parser.add_argument('-p', '--port', type=port_number, default=8080,
+        help='listen on PORT for incoming connections (default=8080)')
+parser.add_argument('-r', '--root', default=os.getcwd(),
+        help='set cache base directory to ROOT, default is the current directory')
+parser.add_argument('-v', '--verbose', action='count',
+        help='show http headers and other info')
+parser.add_argument('-t', '--timeout', type=positive_number, default=15,
+        help='break connection after TIMEOUT seconds of inactivity (default=15)')
+parser.add_argument('--flat', action='store_true',
+        help='flat mode; cache all files in ROOT directory (dangerous!)')
+parser.add_argument('--static', action='store_true',
+        help='static mode; assume files never change')
+parser.add_argument('--offline', action='store_true',
+        help='offline mode; never connect to server')
+parser.add_argument('--limit', type=float, default=0,
+        help='cap download rate to LIMIT KiB/s')
+parser.add_argument('--daemon', metavar='LOGFILE',
+        help='route output to specified LOGFILE, and detach')
+parser.add_argument('--pid', metavar='PIDFILE',
+        help='if --daemon is used, write pid of daemon to PIDFILE')
+parser.add_argument('--debug', action='store_true',
+        help='switch from "gather" to "debug" output module')
+
+args = parser.parse_args()
+
+# allow old names (for now)
+PORT = args.port
+ROOT = os.path.realpath(args.root) + os.sep
+VERBOSE = args.verbose
+TIMEOUT = args.timeout
+FLAT = args.flat
+STATIC = args.static
+ONLINE = not args.offline
+LIMIT = args.limit * 1024
+LOG = args.daemon
+DEBUG = args.debug
+
+if not os.path.isdir(ROOT):
+    sys.exit('Error: invalid cache directory %s' % ROOT)
+
+# some non-commandline parameters
 MAXCHUNK = 1448 # maximum lan packet?
-TIMEFMT = ('%a, %d %b %Y %H:%M:%S GMT', '%a, %d %b %Y %H:%M:%S +0000 GMT', '%a, %d %b %Y %H:%M:%S +0000')
 SUFFIX = '.incomplete'
-USAGE = '''usage: %(PROG)s [options]
-
-options:
-  -h --help          show this help message and exit
-  -p --port PORT     listen on this port for incoming connections, default %(PORT)i
-  -r --root DIR      set cache root directory, default current: %(ROOT)s
-  -v --verbose       show http headers and other info
-  -t --timeout SEC   break connection after so many seconds of inactivity, default %(TIMEOUT)i
-  -6 --ipv6          try ipv6 addresses if available
-     --flat          flat mode; cache all files in root directory (dangerous!)
-     --static        static mode; assume files never change
-     --offline       offline mode; never connect to server
-     --limit RATE    limit download rate at a fixed K/s
-     --daemon LOG    route output to log and detach
-     --debug         switch from gather to debug output module''' % locals()
-
-for _arg in _args:
-
-  if _arg in ( '-h', '--help' ):
-    sys.exit( USAGE )
-  elif _arg in ( '-p', '--port' ):
-    try:
-      PORT = int( next(_args) )
-      assert PORT > 0
-    except:
-      sys.exit( 'Error: %s requires a positive numerical argument' % _arg )
-  elif _arg in ( '-r', '--root' ):
-    try:
-      ROOT = os.path.realpath( next(_args) ) + os.sep
-      assert os.path.isdir( ROOT )
-    except StopIteration:
-      sys.exit( 'Error: %s requires a directory argument' % _arg )
-    except:
-      sys.exit( 'Error: invalid cache directory %s' % ROOT )
-  elif _arg in ( '-v', '--verbose' ):
-    VERBOSE += 1
-  elif _arg in ( '-t', '--timeout' ):
-    try:
-      TIMEOUT = int( next(_args) )
-      assert TIMEOUT > 0
-    except:
-      sys.exit( 'Error: %s requires a positive numerical argument' % _arg )
-  elif _arg in ( '-6', '--ipv6' ):
-    FAMILY = socket.AF_UNSPEC
-  elif _arg == '--flat':
-    FLAT = True
-  elif _arg == '--static':
-    STATIC = True
-  elif _arg == '--offline':
-    ONLINE = False
-    STATIC = True
-  elif _arg == '--limit':
-    try:
-      LIMIT = float( next(_args) ) * 1024
-    except:
-      sys.exit( 'Error: %s requires a numerical argument' % _arg )
-  elif _arg == '--daemon':
-    LOG = next(_args)
-  elif _arg == '--debug':
-    DEBUG = True
-  else:
-    sys.exit( 'Error: invalid option %r' % _arg )
-
-MAXFILELEN = os.pathconf( ROOT, b'PC_NAME_MAX' ) - len(SUFFIX)
+MAXFILELEN = os.pathconf(ROOT, 'PC_NAME_MAX') - len(SUFFIX)
+TIMEFMT = (
+        '%a, %d %b %Y %H:%M:%S GMT',
+        '%a, %d %b %Y %H:%M:%S +0000 GMT',
+        '%a, %d %b %Y %H:%M:%S +0000',
+        )
