@@ -215,7 +215,7 @@ def spawn( generator, port, debug, log ):
         i -= 1
         state = fibers[ i ].state
 
-        if state and now > state.expire:
+        if state and (state.expire is None  or  now > state.expire):
           if isinstance( state, WAIT ):
             fibers[ i ].step()
           else:
@@ -233,7 +233,7 @@ def spawn( generator, port, debug, log ):
         elif state.expire is None:
           continue
 
-        if state.expire < expire or expire is None:
+        if state.expire is None or expire is None or state.expire < expire:
           expire = state.expire
 
       if expire is None:
