@@ -3,18 +3,6 @@ import six
 import Params, os, hashlib
 
 
-def makedirs( path ):
-
-  dir = os.path.dirname( path )
-  if dir and not os.path.isdir( dir ):
-    if os.path.isfile( dir ):
-      print('directory %s mistaken for file' % dir)
-      os.remove( dir )
-    else:
-      makedirs( dir )
-    os.mkdir( dir )
-
-
 class File:
 
   size = -1
@@ -53,7 +41,7 @@ class File:
 
     print('Preparing new file in cache')
     try:
-      makedirs( self.__path )
+      os.makedirs( self.__path )
       self.__file = open( self.__path + Params.SUFFIX, 'w+' )
     except Exception as e:
       print('Failed to open file:', e)
