@@ -41,7 +41,9 @@ class File:
 
     print('Preparing new file in cache')
     try:
-      os.makedirs(os.path.dirname(self.__path))
+      dir = os.path.dirname(self.__path)
+      if not os.path.exists(dir):
+          os.makedirs(dir)
       self.__file = open( self.__path + Params.SUFFIX, 'w+' )
     except Exception as e:
       print('Failed to open file:', e)
