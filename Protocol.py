@@ -299,7 +299,8 @@ class FtpProtocol( Cache.File ):
   def __handle_passivemode( self, code, line ):
 
     assert code == 227, 'server sends %i; expected 227 (passive mode)' % code
-    channel = eval( line.split()[ -1 ] )
+    channel = line.split()[-1].rstrip('.')
+    channel = eval(channel) #should look like a tuple
     addr = '%i.%i.%i.%i' % channel[ :4 ], channel[ 4 ] * 256 + channel[ 5 ]
     self.__socket = connect( addr )
     self.__sendbuf = 'SIZE %s\r\n' % self.__path
