@@ -1,4 +1,4 @@
-#! /usr/bin/python2.7
+#! /usr/bin/python
 #
 # repcacheman ver 0.44
 #
@@ -30,8 +30,7 @@ import os
 import pwd,sys,optparse
 
 if os.getuid():
-	print"Must be root"
-	sys.exit(1)
+	sys.exit("Must be root")
 
 # Parse Options
 
@@ -45,11 +44,9 @@ if options.user:
 		uid=pwd.getpwnam(options.user)[2]
 		gid=pwd.getpwnam(options.user)[3]
 	except:
-		print "User \'" + options.user + "\' Doesn't exist on system - edit config or add user to system."
-		sys.exit(1)
+		sys.exit("User \'" + options.user + "\' Doesn't exist on system - edit config or add user to system.")
 else:
-	print "Error\n\tunable to get USER from /etc/http-replicator.conf"
-	sys.exit(1)
+	sys.exit("Error\n\tunable to get USER from /etc/http-replicator.conf")
 
 # dir is replicator's cache directory
 dir=options.dir+"/"
@@ -57,68 +54,65 @@ dir=options.dir+"/"
 if os.path.isdir(dir) :
 	newdir=0
 else :
-	print"\n\nBegin Http-Replicator Setup...."
+	print("\n\nBegin Http-Replicator Setup....")
 	try:
 		os.makedirs(dir)
-		print "\tcreated " + dir
+		print("\tcreated " + dir)
 		newdir=1
 	except:
-		print "\tcreate " + dir + " failed"
-		print '\terror:', sys.exc_info()[1]
-		sys.exit(1)
+		sys.exit("\tcreate " + dir + " failed\n"+'\terror:', sys.exc_info()[1])
 	try:
 		os.chown(dir,uid,gid)
-		print "\tchanged owner of " + dir + " to " + options.user 
+		print("\tchanged owner of " + dir + " to " + options.user )
 	except:
-		print "\tchange owner " + dir + " to " + options.user + " failed:"
-		print '\terror:', sys.exc_info()[1]
+		print("\tchange owner " + dir + " to " + options.user + " failed:")
+		print('\terror:', sys.exc_info()[1])
 
-print "\n\nReplicator's cache directory: " + dir
+print("\n\nReplicator's cache directory: " + dir)
 
 # Import Portage settings
 
 distdir=portage.settings["DISTDIR"]+"/"
 if distdir:
-	print "Portage's DISTDIR: " + distdir
+	print("Portage's DISTDIR: " + distdir)
 else:
-	print"Unable to get Portage's DISTDIR"
-	sys.exit(1)
+	sys.exit("Unable to get Portage's DISTDIR")
 
 # Start Work
 
-print "\nComparing directories...."
+print("\nComparing directories....")
 
 # Create filecmp object
 import filecmp
 dc=filecmp.dircmp (distdir,dir,['cvs-src','git-src','hg-src','egit-src','.locks'])
-print "Done!"
+print("Done!")
 
 dupes=dc.common
 deleted=0
 
 if dupes:
-	print "\nDeleting duplicate file(s) in " + distdir
+	print("\nDeleting duplicate file(s) in " + distdir)
 
 	for s in dupes:
-		print s
+		print(s)
 		try:
 			os.remove(distdir + s )
 			deleted +=1
 		except:
-			print "\tdelete " + distdir + s + " failed:"
-			print '\terror:', sys.exc_info()[1]
+			print("\tdelete " + distdir + s + " failed:")
+			print('\terror:', sys.exc_info()[1])
 
-	print "Done!"
+	print("Done!")
 
 
 newfiles=dc.left_only
 nf=len(dc.left_only)
 
 if nf:
-	print "\nNew files in DISTDIR:"
+	print("\nNew files in DISTDIR:")
 	for s in newfiles:
-		print s
-	print"\nChecking authenticity and integrity of new files..."
+		print(s)
+	print("\nChecking authenticity and integrity of new files...")
 	added=0
 	errors=0
 	badsum=0
@@ -146,20 +140,20 @@ if nf:
 							added += 1
 							os.remove(distdir+file)
 						except:
-							print "\tmove/copy " + file + " failed:"
-							print '\terror:', sys.exc_info()[1]
+							print("\tmove/copy " + file + " failed:")
+							print('\terror:', sys.exc_info()[1])
 							errors+=1
 							
 					try:
 						os.chown(dir+file,uid,gid)
 					except:
-						print "\tchown " + file + " failed:"
-						print '\terror:', sys.exc_info()[1]
+						print("\tchown " + file + " failed:")
+						print('\terror:', sys.exc_info()[1])
 						errors +=1
 						
 					remove.append( file )
 					
-				except portage.exception.DigestException, e:
+				except portage.exception.DigestException as e:
 					print("\n!!! Digest verification failed:")
 					print("!!! %s" % e.value[0])
 					print("!!! Reason: %s" % e.value[1])
@@ -171,31 +165,31 @@ if nf:
 				newfiles.remove ( rf )
 
 
-print "\nSUMMARY:"
-print "Found " + str(len(dupes)) + " duplicate file(s)"
+print("\nSUMMARY:")
+print("Found " + str(len(dupes)) + " duplicate file(s)")
 if deleted:
-	print "\tDeleted " + str(deleted) + " dupe(s)"
+	print("\tDeleted " + str(deleted) + " dupe(s)")
 
 if nf:
-	print "Found " + str(nf) + " new file(s)"
-	print "\tAdded " + str(added) + " of those file(s) to the cache"
+	print("Found " + str(nf) + " new file(s)")
+	print("\tAdded " + str(added) + " of those file(s) to the cache")
 	
-	print "Rejected " +str(len(newfiles))  + " File(s) - ",
-	print str(badsum) +  " failed checksum(s)"
+	print("Rejected " +str(len(newfiles))  + " File(s) - ",)
+	print(str(badsum) +  " failed checksum(s)")
 	for s in newfiles:
-		print "\t%s" %s
+		print("\t%s" %s)
 	if errors:
-		print "Encountered " +str(errors) + " errors"
+		print("Encountered " +str(errors) + " errors")
 #	if badsum:
-#		print str(badsum) + " partial/corrupted file(s)"
+#		print(str(badsum) + " partial/corrupted file(s)")
 
 if newdir:
-	print"\n\nexecute:\n/etc/init.d/http-replicator start"
-	print"to run http-replicator.\n\nexecute:\nrc-update add http-replicator default"
-	print"to make http-replicator start at boot"
-	print"\n\nexecute:\n/usr/bin/repcacheman\nafter emerge's on the server to delete"
-	print"dup files and add new files to the cache"
+	print("\n\nexecute:\n/etc/init.d/http-replicator start")
+	print("to run http-replicator.\n\nexecute:\nrc-update add http-replicator default")
+	print("to make http-replicator start at boot")
+	print("\n\nexecute:\n/usr/bin/repcacheman\nafter emerge's on the server to delete")
+	print("dup files and add new files to the cache")
 
-print "\n\nHTTP-Replicator requires you delete any partial downloads in " + distdir
-print "run rm -f " + distdir +'*'
+print("\n\nHTTP-Replicator requires you delete any partial downloads in " + distdir)
+print("run rm -f " + distdir +'*')
 
