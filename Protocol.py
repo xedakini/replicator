@@ -38,7 +38,7 @@ class BlindProtocol:
 
   def recvbuf( self ):
 
-    return ''
+    return b''
 
   def hasdata( self ):
 
@@ -71,25 +71,25 @@ class HttpProtocol( Cache.File ):
       self.Response = Response.DataResponse
       return
 
-    head = 'GET /%s HTTP/1.1' % request.path
+    head = b'GET /%s HTTP/1.1' % request.path
     args = request.args.copy()
-    args.pop( 'Accept-Encoding', None )
-    args.pop( 'Range', None )
+    args.pop( b'Accept-Encoding', None )
+    args.pop( b'Range', None )
     stat = self.partial() or self.full()
     if stat:
       size = stat.st_size
       mtime = time.strftime( Params.TIMEFMT[0], time.gmtime( stat.st_mtime ) )
       if self.partial():
         print('Requesting resume of partial file in cache: %i bytes, %s' % ( size, mtime ))
-        args[ 'Range' ] = 'bytes=%i-' % size
-        args[ 'If-Range' ] = mtime
+        args[ b'Range' ] = b'bytes=%i-' % size
+        args[ b'If-Range' ] = mtime.encode()
       else:
         print('Checking complete file in cache: %i bytes, %s' % ( size, mtime ))
-        args[ 'If-Modified-Since' ] = mtime
+        args[ b'If-Modified-Since' ] = mtime.encode()
 
     self.__socket = connect( request.addr )
-    self.__sendbuf = '\r\n'.join( [ head ] + list(map( ': '.join, iter(args.items()) )) + [ '', '' ] )
-    self.__recvbuf = ''
+    self.__sendbuf = b'\r\n'.join( [ head ] + list(map( b': '.join, iter(args.items()) )) + [ b'', b'' ] )
+    self.__recvbuf = b''
     self.__parse = HttpProtocol.__parse_head
 
   def hasdata( self ):
@@ -105,16 +105,16 @@ class HttpProtocol( Cache.File ):
 
   def __parse_head( self, chunk ):
 
-    eol = chunk.find( '\n' ) + 1
+    eol = chunk.find( b'\n' ) + 1
     if eol == 0:
       return 0
 
     line = chunk[ :eol ]
-    print('Server responds', line.rstrip())
+    print('Server responds %s' % line.rstrip().decode())
     fields = line.split()
-    assert len( fields ) >= 3 and fields[ 0 ].startswith( 'HTTP/' ) and fields[ 1 ].isdigit(), 'invalid header line: %r' % line
+    assert len( fields ) >= 3 and fields[ 0 ].startswith( b'HTTP/' ) and fields[ 1 ].isdigit(), 'invalid header line: %r' % line
     self.__status = int( fields[ 1 ] )
-    self.__message = ' '.join( fields[ 2: ] )
+    self.__message = b' '.join( fields[ 2: ] )
     self.__args = {}
     self.__parse = HttpProtocol.__parse_args
 
@@ -122,21 +122,21 @@ class HttpProtocol( Cache.File ):
 
   def __parse_args( self, chunk ):
 
-    eol = chunk.find( '\n' ) + 1
+    eol = chunk.find( b'\n' ) + 1
     if eol == 0:
       return 0
 
     line = chunk[ :eol ]
-    if ':' in line:
+    if b':' in line:
       if Params.VERBOSE > 1:
-        print('>', line.rstrip())
-      key, value = line.split( ':', 1 )
+        print('>', line.rstrip().decode())
+      key, value = line.split( b':', 1 )
       key = key.title()
       if key in self.__args:
-        self.__args[ key ] += '\r\n' + key + ': ' + value.strip()
+        self.__args[ key ] += b'\r\n' + key + ': ' + value.strip()
       else:
         self.__args[ key ] = value.strip()
-    elif line in ( '\r\n', '\n' ):
+    elif line in ( b'\r\n', b'\n' ):
       self.__parse = None
     else:
       print('Ignored header line:', line)
@@ -161,10 +161,10 @@ class HttpProtocol( Cache.File ):
     if self.__status == 200:
 
       self.open_new()
-      if 'Last-Modified' in self.__args:
+      if b'Last-Modified' in self.__args:
         for timefmt in Params.TIMEFMT:
           try:
-            mtime = calendar.timegm( time.strptime( self.__args[ 'Last-Modified' ], timefmt ) )
+            mtime = calendar.timegm( time.strptime( self.__args[b'Last-Modified'].decode(), timefmt ) )
           except ValueError:
             pass # try next time format string
           else: # time format string worked, so ignore remaining time format strings
@@ -172,24 +172,24 @@ class HttpProtocol( Cache.File ):
             break
         else: # all time format strings failed
           # raise exception presumably similar to above silenced exception
-          raise ValueError("time data '%s' does not match formats %s" % (self.__args[ 'Last-Modified' ], ', '.join("'%s'" % timefmt for timefmt in Params.TIMEFMT)))
-      if 'Content-Length' in self.__args:
-        self.size = int( self.__args[ 'Content-Length' ] )
-      if self.__args.pop( 'Transfer-Encoding', None ) == 'chunked':
+          raise ValueError("time data '%s' does not match formats %s" % (self.__args[ b'Last-Modified' ], b', '.join("'%s'" % timefmt for timefmt in Params.TIMEFMT)))
+      if b'Content-Length' in self.__args:
+        self.size = int( self.__args[ b'Content-Length' ] )
+      if self.__args.pop( b'Transfer-Encoding', None ) == b'chunked':
         self.Response = Response.ChunkedDataResponse
       else:
         self.Response = Response.DataResponse
 
     elif self.__status == 206 and self.partial():
 
-      range = self.__args.pop( 'Content-Range', 'none specified' )
-      assert range.startswith( 'bytes ' ), 'invalid content-range: %s' % range
-      range, size = range[ 6: ].split( '/' )
-      beg, end = range.split( '-' )
+      range = self.__args.pop( b'Content-Range', b'none specified' )
+      assert range.startswith( b'bytes ' ), 'invalid content-range: %s' % range
+      range, size = range[ 6: ].split( b'/' )
+      beg, end = range.split( b'-' )
       self.size = int( size )
       assert self.size == int( end ) + 1
       self.open_partial( int( beg ) )
-      if self.__args.pop( 'Transfer-Encoding', None ) == 'chunked':
+      if self.__args.pop( b'Transfer-Encoding', None ) == b'chunked':
         self.Response = Response.ChunkedDataResponse
       else:
         self.Response = Response.DataResponse
@@ -210,7 +210,7 @@ class HttpProtocol( Cache.File ):
 
   def recvbuf( self ):
 
-    return '\r\n'.join( [ 'HTTP/1.1 %i %s' % ( self.__status, self.__message ) ] + list(map( ': '.join, iter(self.__args.items()) )) + [ '', '' ] )
+    return b'\r\n'.join( [ b'HTTP/1.1 %i %s' % ( self.__status, self.__message ) ] + list(map( b': '.join, iter(self.__args.items()) )) + [ b'', b'' ] )
 
   def args( self ):
 
@@ -237,8 +237,8 @@ class FtpProtocol( Cache.File ):
 
     self.__socket = connect( request.addr )
     self.__path = request.path
-    self.__sendbuf = ''
-    self.__recvbuf = ''
+    self.__sendbuf = b''
+    self.__recvbuf = b''
     self.__handle = FtpProtocol.__handle_serviceready
 
   def socket( self ):
@@ -247,7 +247,7 @@ class FtpProtocol( Cache.File ):
 
   def hasdata( self ):
 
-    return self.__sendbuf != ''
+    return self.__sendbuf != b''
 
   def send( self, sock ):
 
@@ -263,47 +263,47 @@ class FtpProtocol( Cache.File ):
     chunk = sock.recv( Params.MAXCHUNK )
     assert chunk, 'server closed connection prematurely'
     self.__recvbuf += chunk
-    while '\n' in self.__recvbuf:
-      reply, self.__recvbuf = self.__recvbuf.split( '\n', 1 )
+    while b'\n' in self.__recvbuf:
+      reply, self.__recvbuf = self.__recvbuf.split( b'\n', 1 )
       if Params.VERBOSE > 1:
-        print('S:', reply.rstrip())
-      if reply[ :3 ].isdigit() and reply[ 3 ] != '-':
+        print('S:', reply.rstrip().decode())
+      if reply[:3].isdigit() and reply[3:4] != b'-':
         self.__handle( self, int( reply[ :3 ] ), reply[ 4: ] )
         if self.__sendbuf and Params.VERBOSE > 1:
-          print('C:', self.__sendbuf.rstrip())
+          print('C:', self.__sendbuf.rstrip().decode())
 
   def __handle_serviceready( self, code, line ):
 
     assert code == 220, 'server sends %i; expected 220 (service ready)' % code
-    self.__sendbuf = 'USER anonymous\r\n'
+    self.__sendbuf = b'USER anonymous\r\n'
     self.__handle = FtpProtocol.__handle_password
 
   def __handle_password( self, code, line ):
 
     assert code == 331, 'server sends %i; expected 331 (need password)' % code
-    self.__sendbuf = 'PASS anonymous@\r\n'
+    self.__sendbuf = b'PASS anonymous@\r\n'
     self.__handle = FtpProtocol.__handle_loggedin
 
   def __handle_loggedin( self, code, line ):
 
     assert code == 230, 'server sends %i; expected 230 (user logged in)' % code
-    self.__sendbuf = 'TYPE I\r\n'
+    self.__sendbuf = b'TYPE I\r\n'
     self.__handle = FtpProtocol.__handle_binarymode
 
   def __handle_binarymode( self, code, line ):
 
     assert code == 200, 'server sends %i; expected 200 (binary mode ok)' % code
-    self.__sendbuf = 'PASV\r\n'
+    self.__sendbuf = b'PASV\r\n'
     self.__handle = FtpProtocol.__handle_passivemode
 
   def __handle_passivemode( self, code, line ):
 
     assert code == 227, 'server sends %i; expected 227 (passive mode)' % code
-    channel = line.split()[-1].rstrip('.')
+    channel = line.split()[-1].rstrip(b'.')
     channel = eval(channel) #should look like a tuple
-    addr = '%i.%i.%i.%i' % channel[ :4 ], channel[ 4 ] * 256 + channel[ 5 ]
+    addr = b'%i.%i.%i.%i' % channel[:4], channel[4]*256 + channel[5]
     self.__socket = connect( addr )
-    self.__sendbuf = 'SIZE %s\r\n' % self.__path
+    self.__sendbuf = b'SIZE %s\r\n' % self.__path
     self.__handle = FtpProtocol.__handle_size
 
   def __handle_size( self, code, line ):
@@ -315,7 +315,7 @@ class FtpProtocol( Cache.File ):
     assert code == 213, 'server sends %i; expected 213 (file status)' % code
     self.size = int( line )
     print('File size:', self.size)
-    self.__sendbuf = 'MDTM %s\r\n' % self.__path
+    self.__sendbuf = b'MDTM %s\r\n' % self.__path
     self.__handle = FtpProtocol.__handle_mtime
 
   def __handle_mtime( self, code, line ):
@@ -325,11 +325,11 @@ class FtpProtocol( Cache.File ):
       return
 
     assert code == 213, 'server sends %i; expected 213 (file status)' % code
-    self.mtime = calendar.timegm( time.strptime( line.rstrip(), '%Y%m%d%H%M%S' ) )
+    self.mtime = calendar.timegm( time.strptime( line.decode().rstrip(), '%Y%m%d%H%M%S' ) )
     print('Modification time:', time.strftime( Params.TIMEFMT[0], time.gmtime( self.mtime ) ))
     stat = self.partial()
     if stat and stat.st_mtime == self.mtime:
-      self.__sendbuf = 'REST %i\r\n' % stat.st_size
+      self.__sendbuf = b'REST %i\r\n' % stat.st_size
       self.__handle = FtpProtocol.__handle_resume
     else:
       stat = self.full()
@@ -338,14 +338,14 @@ class FtpProtocol( Cache.File ):
         self.Response = Response.DataResponse
       else:
         self.open_new()
-        self.__sendbuf = 'RETR %s\r\n' % self.__path
+        self.__sendbuf = b'RETR %s\r\n' % self.__path
         self.__handle = FtpProtocol.__handle_data
 
   def __handle_resume( self, code, line ):
 
     assert code == 350, 'server sends %i; expected 350 (pending further information)' % code
     self.open_partial()
-    self.__sendbuf = 'RETR %s\r\n' % self.__path
+    self.__sendbuf = b'RETR %s\r\n' % self.__path
     self.__handle = FtpProtocol.__handle_data
 
   def __handle_data( self, code, line ):

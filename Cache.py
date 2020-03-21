@@ -44,7 +44,7 @@ class File:
       dir = os.path.dirname(self.__path)
       if not os.path.exists(dir):
           os.makedirs(dir)
-      self.__file = open( self.__path + Params.SUFFIX, 'w+' )
+      self.__file = open( self.__path + Params.SUFFIX, 'wb+' )
     except Exception as e:
       print('Failed to open file:', e)
       self.__file = os.tmpfile()
@@ -52,7 +52,7 @@ class File:
   def open_partial( self, offset=-1 ):
 
     self.mtime = os.stat( self.__path + Params.SUFFIX ).st_mtime
-    self.__file = open( self.__path + Params.SUFFIX, 'a+' )
+    self.__file = open( self.__path + Params.SUFFIX, 'ab+' )
     if offset >= 0:
       assert offset <= self.tell(), 'range does not match file in cache'
       self.__file.seek( offset )
@@ -62,7 +62,7 @@ class File:
   def open_full( self ):
 
     self.mtime = os.stat( self.__path ).st_mtime
-    self.__file = open( self.__path, 'r' )
+    self.__file = open( self.__path, 'rb' )
     self.size = self.tell()
     print('Reading complete file from cache')
 

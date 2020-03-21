@@ -21,29 +21,29 @@ class HttpRequest:
 
   def __parse( self ):
 
-    recvbuf = ''
-    while '\n' not in recvbuf:
+    recvbuf = b''
+    while b'\n' not in recvbuf:
       yield fiber.RECV( self.client, Params.TIMEOUT )
       recvbuf += self.recv()
-    header, recvbuf = recvbuf.split( '\n', 1 )
-    print('Client sends', header.rstrip())
+    header, recvbuf = recvbuf.split( b'\n', 1 )
+    print('Client sends', header.rstrip().decode())
 
     self.__parse_header( header )
 
     args = {}
     while True:
-      while '\n' not in recvbuf:
+      while b'\n' not in recvbuf:
         yield fiber.RECV( self.client, Params.TIMEOUT )
         recvbuf += self.recv()
-      line, recvbuf = recvbuf.split( '\n', 1 )
-      if ':' in line:
+      line, recvbuf = recvbuf.split( b'\n', 1 )
+      if b':' in line:
         if Params.VERBOSE > 1:
-          print('>', line.rstrip())
-        key, value = line.split( ':', 1 )
+          print('>', line.rstrip().decode())
+        key, value = line.split( b':', 1 )
         key = key.title()
         assert key not in args, 'duplicate key: %s' % key
         args[ key ] = value.strip()
-      elif line and line != '\r':
+      elif line and line != b'\r':
         print('Ignored header line: %r' % line.rstrip())
       else:
         break
@@ -68,47 +68,47 @@ class HttpRequest:
     assert len( fields ) == 3, 'invalid header line: %r' % line.rstrip()
     cmd, url, dummy = fields
 
-    if url.startswith( 'http://' ):
+    if url.startswith( b'http://' ):
       host = url[ 7: ]
       port = 80
-      if cmd == 'GET':
+      if cmd == b'GET':
         proto = Protocol.HttpProtocol
       else:
         proto = Protocol.BlindProtocol
-    elif url.startswith( 'ftp://' ):
-      assert cmd == 'GET', '%s request unsupported for ftp' % cmd
+    elif url.startswith( b'ftp://' ):
+      assert cmd == b'GET', '%s request unsupported for ftp' % cmd
       proto = Protocol.FtpProtocol
       host = url[ 6: ]
       port = 21
     else:
       raise AssertionError('invalid url: %s' % url)
 
-    if '/' in host:
-      host, path = host.split( '/', 1 )
+    if b'/' in host:
+      host, path = host.split( b'/', 1 )
     else:
-      path = ''
+      path = b''
 
-    if ':' in host:
-      host, port = host.split( ':' )
+    if b':' in host:
+      host, port = host.split( b':' )
       port = int( port )
 
     self.cmd = cmd
     self.addr = ( host, port )
     self.path = path
-    self.cache = '%s:%i/%s' % ( host, port, path )
+    self.cache = '%s:%i/%s' % ( host.decode(), port, path.decode() )
     self.Protocol = proto
 
   def __parse_args( self, args ):
 
-    size = int( args.get( 'Content-Length', 0 ) )
+    size = int( args.get( b'Content-Length', 0 ) )
     if size:
-      assert self.cmd == 'POST', '%s request conflicts with message body' % self.cmd
+      assert self.cmd == b'POST', '%s request conflicts with message body' % self.cmd
 
-    if 'Range' in args:
+    if b'Range' in args:
       try:
-        rangestr = args[ 'Range' ]
-        assert rangestr.startswith( 'bytes=' )
-        beg, end = rangestr[ 6: ].split( '-' )
+        rangestr = args[ b'Range' ]
+        assert rangestr.startswith( b'bytes=' )
+        beg, end = rangestr[ 6: ].split( b'-' )
         if not beg:
           range = int( end ), -1 # FIX!
         elif not end:
@@ -120,11 +120,11 @@ class HttpRequest:
     else:
       range = 0, -1
 
-    args[ 'Host' ] = self.addr[ 0 ]
-    args[ 'Connection' ] = 'close'
-    args.pop( 'Keep-Alive', None )
-    args.pop( 'Proxy-Connection', None )
-    args.pop( 'Proxy-Authorization', None )
+    args[ b'Host' ] = self.addr[ 0 ]
+    args[ b'Connection' ] = b'close'
+    args.pop( b'Keep-Alive', None )
+    args.pop( b'Proxy-Connection', None )
+    args.pop( b'Proxy-Authorization', None )
 
     self.args = args
     self.size = size
@@ -132,16 +132,16 @@ class HttpRequest:
 
   def recvbuf( self ):
 
-    lines = [ '%s /%s HTTP/1.1' % ( self.cmd, self.path ) ]
-    lines.extend( list(map( ': '.join, self.args.items() )) )
-    lines.append( '' )
+    lines = [ b'%s /%s HTTP/1.1' % ( self.cmd, self.path ) ]
+    lines.extend( list(map( b': '.join, self.args.items() )) )
+    lines.append( b'' )
     if self.size:
       self.body.seek( 0 )
       lines.append( self.body.read() )
     else:
-      lines.append( '' )
+      lines.append( b'' )
 
-    return '\r\n'.join( lines )
+    return b'\r\n'.join( lines )
 
   def __hash__( self ):
 
