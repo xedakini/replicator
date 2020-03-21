@@ -17,6 +17,8 @@ parser = argparse.ArgumentParser(description = 'http-replicator: a caching http 
 
 parser.add_argument('-p', '--port', type=port_number, default=8080,
         help='listen on PORT for incoming connections (default=8080)')
+parser.add_argument('-b', '--bind', default='::1', metavar='ADDRESS',
+        help='bind server to ADDRESS (default=::1)')
 parser.add_argument('-r', '--root', default=os.getcwd(),
         help='set cache base directory to ROOT, default is the current directory')
 parser.add_argument('-v', '--verbose', action='count',
@@ -42,6 +44,7 @@ args = parser.parse_args()
 
 # allow old names (for now)
 PORT = args.port
+BIND = args.bind
 ROOT = os.path.realpath(args.root) + os.sep
 VERBOSE = args.verbose
 TIMEOUT = args.timeout

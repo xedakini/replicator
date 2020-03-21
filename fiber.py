@@ -181,13 +181,15 @@ def fork( output, pidfile ):
   os.dup2( nul.fileno(), sys.stdin.fileno()  )
 
 
-def spawn( generator, port, debug=False, log=None, pidfile=None ):
+def spawn( generator, bindaddr, port, debug=False, log=None, pidfile=None ):
 
   try:
-    listener = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
+    addrs = socket.getaddrinfo(bindaddr, port, type=socket.SOCK_STREAM)
+    family, socktype, proto, canonname, sockaddr = addrs[0]
+    listener = socket.socket(family, socktype, proto)
     listener.setblocking( 0 )
     listener.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, listener.getsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR ) | 1 )
-    listener.bind( ( '', port ) )
+    listener.bind(sockaddr[:2])
     listener.listen( 5 )
   except Exception as e:
     print('error: failed to create socket:', e)
