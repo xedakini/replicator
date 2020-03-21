@@ -137,12 +137,14 @@ class DebugFiber( Fiber ):
     self.__newline = string.endswith( '\n' )
 
 
-def fork( output ):
+def fork( output, pidfile ):
 
   try:
     log = open( output, 'w' )
     nul = open( '/dev/null', 'r' )
     pid = os.fork()
+    if pidfile:
+      pidout = open(pidfile, 'w') # open pid file for writing
   except IOError as e:
     print('error: failed to open', e.filename)
     sys.exit( 1 )
@@ -169,6 +171,9 @@ def fork( output ):
 
   if pid:
     print(pid)
+    if pidfile:
+      pidout.write(str(pid))
+      pidout.close()
     sys.exit( 0 )
 
   os.dup2( log.fileno(), sys.stdout.fileno() )
@@ -176,7 +181,7 @@ def fork( output ):
   os.dup2( nul.fileno(), sys.stdin.fileno()  )
 
 
-def spawn( generator, port, debug, log ):
+def spawn( generator, port, debug=False, log=None, pidfile=None ):
 
   try:
     listener = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
@@ -189,7 +194,7 @@ def spawn( generator, port, debug, log ):
     sys.exit( 1 )
 
   if log:
-    fork( log )
+    fork( log, pidfile )
 
   if debug:
     myFiber = DebugFiber

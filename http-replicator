@@ -56,4 +56,4 @@ def Replicator( client, address ):
   print('Transaction successfully completed')
 
 
-fiber.spawn( Replicator, Params.PORT, Params.DEBUG, Params.LOG )
+fiber.spawn( Replicator, Params.PORT, Params.DEBUG, Params.LOG, Params.PIDFILE )

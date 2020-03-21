@@ -50,6 +50,7 @@ STATIC = args.static
 ONLINE = not args.offline
 LIMIT = args.limit * 1024
 LOG = args.daemon
+PIDFILE = args.pid
 DEBUG = args.debug
 
 if not os.path.isdir(ROOT):
