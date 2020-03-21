@@ -298,7 +298,8 @@ class FtpProtocol( Cache.File ):
 
     assert code == 227, 'server sends %i; expected 227 (passive mode)' % code
     channel = line.split()[-1].rstrip(b'.')
-    channel = eval(channel) #should look like a tuple
+    channel = eval(channel)
+    assert len(channel) == 6, 'offered FTP PASV channel is unsupported (can only handle IPv4)'
     addr = b'%i.%i.%i.%i' % channel[:4], channel[4]*256 + channel[5]
     self.__socket = connect( addr )
     self.__sendbuf = b'SIZE %s\r\n' % self.__path
