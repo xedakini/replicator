@@ -15,7 +15,7 @@ def connect( addr ):
 
   family, socktype, proto, canonname, sockaddr = DNSCache[ addr ][ 0 ]
 
-  print('Connecting to %s:%i' % sockaddr)
+  print('Connecting to %s:%i' % sockaddr[:2])
   sock = socket.socket( family, socktype, proto )
   sock.setblocking( 0 )
   sock.connect_ex( sockaddr )
