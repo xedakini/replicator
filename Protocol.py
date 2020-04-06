@@ -1,4 +1,4 @@
-import Params, Response, Cache, time, socket, os, sys, calendar
+import Params, Response, Cache, time, socket, os, sys, re, calendar
 
 
 DNSCache = {}
@@ -291,16 +291,32 @@ class FtpProtocol( Cache.File ):
   def __handle_binarymode( self, code, line ):
 
     assert code == 200, 'server sends %i; expected 200 (binary mode ok)' % code
-    self.__sendbuf = b'PASV\r\n'
-    self.__handle = FtpProtocol.__handle_passivemode
+    print(self.__socket)
+    if self.__socket.family == socket.AF_INET6:
+        self.__sendbuf = b'EPSV\r\n'
+        self.__handle = FtpProtocol.__handle_Epassivemode
+    else:
+        self.__sendbuf = b'PASV\r\n'
+        self.__handle = FtpProtocol.__handle_passivemode
+
+  def __handle_Epassivemode( self, code, line ):
+
+    assert code == 229, 'server sends %i; expected 227 (e-passive mode)' % code
+    match = re.search(r'\((.)\1\1(\d+)\1\)', line.decode())
+    assert match, 'could not parse port from EPSV response (%s)' % line.decode()
+    port = int(match.group(2))
+    addr = (self.__socket.getpeername()[0], port)
+    self.__socket = connect( addr )
+    self.__sendbuf = b'SIZE %s\r\n' % self.__path
+    self.__handle = FtpProtocol.__handle_size
 
   def __handle_passivemode( self, code, line ):
 
     assert code == 227, 'server sends %i; expected 227 (passive mode)' % code
-    channel = line.split()[-1].rstrip(b'.')
-    channel = eval(channel)
-    assert len(channel) == 6, 'offered FTP PASV channel is unsupported (can only handle IPv4)'
-    addr = b'%i.%i.%i.%i' % channel[:4], channel[4]*256 + channel[5]
+    match = re.search(r'(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)', line.decode())
+    assert match, 'could not parse address from PASV response (%s)' % line.decode()
+    ip1, ip2, ip3, ip4, phi, plo = match.groups()
+    addr = ('%s.%s.%s.%s'%(ip1,ip2,ip3,ip4), int(plo)+256*int(phi))
     self.__socket = connect( addr )
     self.__sendbuf = b'SIZE %s\r\n' % self.__path
     self.__handle = FtpProtocol.__handle_size
