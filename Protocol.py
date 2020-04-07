@@ -291,7 +291,6 @@ class FtpProtocol( Cache.File ):
   def __handle_binarymode( self, code, line ):
 
     assert code == 200, 'server sends %i; expected 200 (binary mode ok)' % code
-    print(self.__socket)
     if self.__socket.family == socket.AF_INET6:
         self.__sendbuf = b'EPSV\r\n'
         self.__handle = FtpProtocol.__handle_Epassivemode
