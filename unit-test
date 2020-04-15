@@ -67,11 +67,11 @@ function download {
 }
 
 function http_proxy_download {
-  http_proxy="localhost:$PORT" download "$@"
+  http_proxy="$BIND:$PORT" download "$@"
 }
 
 function ftp_proxy_download {
-  ftp_proxy="localhost:$PORT" download "$@"
+  ftp_proxy="$BIND:$PORT" download "$@"
 }
 
 function touchfile {
