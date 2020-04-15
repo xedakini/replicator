@@ -234,7 +234,7 @@ for NUM; do
     13)
       begintest "$NUM" "RATE CONTROL" '' --limit 10
       http_proxy_download "$URL_HTTP" out
-      saymsg "download speed: should be approximately 10240" "USER" "to verify"
+      saymsg "download speed: should be approximately 10 KiB/s" "USER" "to verify"
       check_equal "cached and served file are equal" cache/"$BASE_HTTP" out
       endtest
       ;;
