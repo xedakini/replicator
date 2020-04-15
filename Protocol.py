@@ -80,7 +80,6 @@ class HttpProtocol( Cache.File ):
       if self.partial():
         print('Requesting resume of partial file in cache: %i bytes, %s' % ( size, mtime ))
         args[ b'Range' ] = b'bytes=%i-' % size
-        args[ b'If-Range' ] = mtime.encode()
       else:
         print('Checking complete file in cache: %i bytes, %s' % ( size, mtime ))
         args[ b'If-Modified-Since' ] = mtime.encode()
@@ -342,7 +341,7 @@ class FtpProtocol( Cache.File ):
     self.mtime = calendar.timegm( time.strptime( line.decode().rstrip(), '%Y%m%d%H%M%S' ) )
     print('Modification time:', time.strftime( Params.TIMEFMT[0], time.gmtime( self.mtime ) ))
     stat = self.partial()
-    if stat and stat.st_mtime == self.mtime:
+    if stat:
       self.__sendbuf = b'REST %i\r\n' % stat.st_size
       self.__handle = FtpProtocol.__handle_resume
     else:
