@@ -140,7 +140,7 @@ class DebugFiber( Fiber ):
 def fork( output, pidfile ):
 
   try:
-    log = open( output, 'w' )
+    log = open( output, 'a' )
     nul = open( '/dev/null', 'r' )
     pid = os.fork()
     if pidfile:
