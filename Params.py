@@ -21,7 +21,7 @@ parser.add_argument('-b', '--bind', default='::1', metavar='ADDRESS',
         help='bind server to ADDRESS (default=::1)')
 parser.add_argument('-r', '--root', default=os.getcwd(),
         help='set cache base directory to ROOT, default is the current directory')
-parser.add_argument('-v', '--verbose', action='count',
+parser.add_argument('-v', '--verbose', default=0, action='count',
         help='show http headers and other info')
 parser.add_argument('-t', '--timeout', type=positive_number, default=15,
         help='break connection after TIMEOUT seconds of inactivity (default=15)')
