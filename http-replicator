@@ -13,7 +13,7 @@ def Replicator( client, address ):
     yield state
 
   try:
-    while request in DOWNLOADS:
+    for request in DOWNLOADS:
       protocol = DOWNLOADS[ request ]
       if protocol.Response:
         if issubclass( protocol.Response, Response.DataResponse ):
