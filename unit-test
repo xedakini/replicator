@@ -1,298 +1,266 @@
 #! /bin/bash
 
+#local resources used by this script
+BIND=localhost
 PORT=8090
-NUM="$1"
-PREFIX="/tmp/unittest$NUM"
-URL_HTTP="www.w3.org:80/Protocols/HTTP/1.1/rfc2616bis/draft-lafon-rfc2616bis-03.txt"
-URL_CHUNKED="jigsaw.w3.org:80/HTTP/ChunkedScript"
-URL_FTP="ftp.debian.org:21/debian/doc/FAQ/debian-faq.en.pdf.gz"
-PID="/tmp/unittest.$PORT"
+BASEDIR=/tmp/replicator-unittest
 
-if test -z "$1"; then
-  while $0 $((++i)); do true; done
-  exit 0
-fi
+#remote resources used for testing
+URL_HTTP=http://www.w3.org:80/Protocols/HTTP/1.1/rfc2616bis/draft-lafon-rfc2616bis-03.txt
+URL_CHUNKED=http://jigsaw.w3.org:80/HTTP/ChunkedScript
+URL_FTP=ftp://ftp.ibiblio.org:21/pub/linux/docs/faqs/Linux-FAQ/Linux-FAQ.pdf
+
+#derived from above
+BASE_HTTP=${URL_HTTP#*://}
+BASE_CHUNKED=${URL_CHUNKED#*://}
+BASE_FTP=${URL_FTP#*://}
+
+mkdir -p "$BASEDIR"
+case "$#" in
+  0) set -- $(seq 1 16) ;;
+esac
+
 
 ########## AUXILIARY FUNCTIONS ################################################
 
-function startserver
-{
-  test -e $PID && kill -int `cat $PID`
-  rm -rf $PREFIX.*
-  mkdir $PREFIX.cache
-  if ! ./http-replicator -p $PORT -r $PREFIX.cache -v -v $@ --daemon $PREFIX.log > $PID; then
-    cat $PID
-    rm $PID
-    exit 1
-  fi
+function startserver {
+  SERVER_PID=$(
+    ulimit -f "${1:-unlimited}"
+    shift
+    ./http-replicator \
+      -b "$BIND" -p "$PORT" \
+      -r "$PREFIX".cache -v -v \
+      --daemon "$PREFIX".log \
+      "$@"
+  )
+  sleep 1  # race: try to allow server to start before we access it...
 }
 
-if which wget > /dev/null; then
-  function download
-  {
-    if test -e $PREFIX.$2; then
-      WGETARGS="-c"
-    fi
-    wget -O $PREFIX.$2 $1 $WGETARGS 1>&2
-  }
-elif which curl > /dev/null; then
-  function download
-  {
-    if test -e $PREFIX.$2; then
-      CURLARGS="-C -"
-    fi
-    curl -o $PREFIX.$2 $CURLARGS $1 1>&2
-  }
-else
-  echo "error: no download tool available"
-  exit 1
-fi
-
-function abort
-{
-  sleep $1
-  if kill %%; then
-    echo
-    sleep 1
-  else
-    echo "error: download finished unexpectedly soon"
-    exit 1
-  fi
+function stopserver {
+  kill "$SERVER_PID"
+  wait
 }
 
-function touchfile
-{
-  FILENAME=$PREFIX.$1
-  shift
-  mkdir -p `dirname $FILENAME`
-  touch $@ $FILENAME
-}
-
-function summary
-{
-  sleep .5
+function begintest {
+  PREFIX=$BASEDIR/$1
   echo "============================================================================="
-  echo " UNIT-TEST $NUM: $1"
+  echo " UNIT-TEST $1: $2"
   echo " ---------------------------------------------------------------------------"
+  rm -rf "$PREFIX".*
+  mkdir -p "$PREFIX".cache
+  shift 2
+  startserver "$@"
 }
 
-function check
-{
-  printf " * %-67s %5s %s\n" "$1" "$2" "$3"
-}
-
-function check_exists
-{
-  if test -e $PREFIX.$2; then
-    check "$1" OK
-  else
-    check "$1" ERROR
-  fi
-}
-
-if which md5 > /dev/null; then
-  function checksum
-  {
-    md5 -q $1
-  }
-elif which md5sum cut > /dev/null; then
-  function checksum
-  {
-    md5sum $1 | cut -d ' ' -f 1
-  }
-else
-  echo "error: no checksum tool available"
-  exit 1
-fi
-
-function check_equal
-{
-  if test ! -e $PREFIX.$2; then
-    check "$1" ERROR "1st file missing" 
-  elif test ! -e $PREFIX.$3; then
-    check "$1" ERROR "2nd file missing" 
-  elif test `checksum $PREFIX.$2` != `checksum $PREFIX.$3`; then
-    check "$1" ERROR "files not equal"
-  else
-    check "$1" OK
-  fi
-}
-
-function check_log
-{
-  if grep -q "$2" $PREFIX.log; then
-    check "$1" OK
-  else
-    check "$1" ERROR
-  fi
-}
-
-function stopserver
-{
+function endtest {
+  stopserver
   echo "============================================================================="
-  echo
-  if test -e $PID; then
-    kill -int `cat $PID`
-    rm $PID
+  echo ""
+}
+
+
+function download {
+  local url=$1 suffix=$2
+  shift 2
+  wget -o "$PREFIX".wget -O "$PREFIX.$suffix" -c -t 1 "$@" "$url"
+  #or something like: curl -o "$PREFIX.$suffix" -C -  -f "$@" "$url" 2>>"$PREFIX".curl
+}
+
+function http_proxy_download {
+  http_proxy="$BIND:$PORT" download "$@"
+}
+
+function ftp_proxy_download {
+  ftp_proxy="$BIND:$PORT" download "$@"
+}
+
+function touchfile {
+  local filename=$PREFIX.$1
+  mkdir -p "$(dirname "$filename")"
+  shift
+  touch "$@" "$filename"
+}
+
+
+function saymsg {
+  local msg=$1 status=$2
+  shift 2
+  printf " * %-67s %5s %s\n" "$msg" "$status" "$*"
+}
+
+function check_exists {
+  if test -e "$PREFIX.cache/$2"; then
+    saymsg "$1" OK
+  else
+    saymsg "$1" ERROR
+  fi
+}
+
+function check_equal {
+  local msg=$1 f1=$PREFIX.$2 f2=$PREFIX.$3
+  if test ! -e "$f1"; then
+    saymsg "$msg" ERROR "1st file missing"
+  elif test ! -e "$f2"; then
+    saymsg "$msg" ERROR "2nd file missing"
+  elif ! cmp -s "$f1" "$f2"; then
+    saymsg "$msg" ERROR "files not equal"
+  else
+    saymsg "$msg" OK
+  fi
+}
+
+function check_log {
+  if grep -q "$2" "$PREFIX".log; then
+    saymsg "$1" OK
+  else
+    saymsg "$1" ERROR
   fi
 }
 
 ########## UNIT TESTS #########################################################
 
-set -m
-case $1 in
-  1)
-    startserver
-    download http://$URL_HTTP out1
-    http_proxy=localhost:$PORT download http://$URL_HTTP out2
-    summary "DOWNLOADING NEW FILE"
-    check_exists "file cached and finalized" cache/$URL_HTTP
-    check_equal "separate download and served file are equal" out1 out2
-    check_equal "cached and served file are equal" cache/$URL_HTTP out2
-    stopserver
-    ;;
-  2)
-    startserver
-    http_proxy=localhost:$PORT download http://$URL_HTTP out & abort 1
-    summary "LEAVING PARTIAL FILE IN CACHE"
-    check_exists "file cached, not finalized" cache/$URL_HTTP.incomplete
-    stopserver
-    ;;
-  3)
-    startserver
-    http_proxy=localhost:$PORT download http://$URL_HTTP out1
-    http_proxy=localhost:$PORT download http://$URL_HTTP out2
-    summary "SERVING FILE FROM CACHE"
-    check_exists "first file cached and finalized" cache/$URL_HTTP
-    check_log "second file served from cache" "Reading complete file from cache"
-    check_equal "cached and first served file are equal" cache/$URL_HTTP out1
-    check_equal "cached and second served file are equal" cache/$URL_HTTP out2
-    stopserver
-    ;;
-  4)
-    startserver
-    download http://$URL_HTTP out & abort 1
-    http_proxy=localhost:$PORT download http://$URL_HTTP out
-    summary "RESUMING PARTIAL FILE BY CLIENT"
-    check_log "received complete file" "Server responds HTTP/1.1 200 OK"
-    check_log "served partial file" "Replicator responds HTTP/1.1 206 Partial Content"
-    check_equal "cached and served file are equal" cache/$URL_HTTP out
-    stopserver
-    ;;
-  5)
-    startserver
-    touchfile cache/$URL_HTTP -m -t 190112140000 
-    http_proxy=localhost:$PORT download http://$URL_HTTP out
-    summary "REDOWNLOADING CHANGED FILE"
-    check_log "detected complete file in cache" "Checking complete file in cache"
-    check_log "downloading new file" "Preparing new file in cache"
-    check_equal "cached and served file are equal" cache/$URL_HTTP out
-    stopserver
-    ;;
-  6)
-    startserver
-    http_proxy=localhost:$PORT download http://$URL_HTTP out1 & abort 1
-    http_proxy=localhost:$PORT download http://$URL_HTTP out2
-    summary "RESUMING PARTIAL UNCHANGED FILE IN CACHE"
-    check_log "replicator asks for missing part" "Requesting resume of partial file in cache"
-    check_log "received partial file" "Server responds HTTP/1.1 206 Partial Content"
-    check_equal "cached and served file are equal" cache/$URL_HTTP out2
-    stopserver
-    ;;
-  7)
-    startserver
-    touchfile cache/$URL_HTTP.incomplete
-    http_proxy=localhost:$PORT download http://$URL_HTTP out
-    summary "RESUMING PARTIAL CHANGED FILE IN CACHE"
-    check_log "replicator asks for missing part" "Requesting resume of partial file in cache"
-    check_log "received complete file" "Server responds HTTP/1.1 200 OK"
-    check_equal "cached and served file are equal" cache/$URL_HTTP out
-    stopserver
-    ;;
-  8)
-    startserver
-    http_proxy=localhost:$PORT download http://$URL_HTTP out1 > /dev/null & sleep 1
-    http_proxy=localhost:$PORT download http://$URL_HTTP out2
-    summary "JOINING DOWNLOADS"
-    check_log "downloads are joined" "Joined running download"
-    check_equal "cached and first served file are equal" cache/$URL_HTTP out1
-    check_equal "cached and second served file are equal" cache/$URL_HTTP out2
-    stopserver
-    ;;
-  9)
-    startserver
-    download http://$URL_CHUNKED out1
-    http_proxy=localhost:$PORT download http://$URL_CHUNKED out2
-    summary "DOWNLOADING NEW FILE, CHUNKED TRANSFER"
-    check_equal "separate download and served file are equal" out1 out2
-    check_log "server sends chunked data" "Transfer-Encoding: chunked"
-    check_log "processing chunked data" "Switching to ChunkedDataResponse"
-    check_equal "cached and served file are equal" cache/$URL_CHUNKED out2
-    stopserver
-    ;;
-  10)
-    startserver
-    download ftp://$URL_FTP out1
-    ftp_proxy=localhost:$PORT download ftp://$URL_FTP out2
-    summary "DOWNLOADING NEW FILE, FTP TRANSFER"
-    check_equal "separate download and served file are equal" out1 out2
-    check_equal "cached and served file are equal" cache/$URL_FTP out2
-    stopserver
-    ;;
-  11)
-    startserver
-    ftp_proxy=localhost:$PORT download ftp://$URL_FTP out1
-    ftp_proxy=localhost:$PORT download ftp://$URL_FTP out2
-    summary "SERVING FILE FROM CACHE, FTP TRANSFER"
-    check_exists "first file cached and finalized" cache/$URL_FTP
-    check_log "second file served from cache" "Reading complete file from cache"
-    check_equal "cached and first served file are equal" cache/$URL_FTP out1
-    check_equal "cached and second served file are equal" cache/$URL_FTP out2
-    stopserver
-    ;;
-  12)
-    startserver
-    ftp_proxy=localhost:$PORT download ftp://$URL_FTP out1 & abort 1
-    ftp_proxy=localhost:$PORT download ftp://$URL_FTP out2
-    summary "RESUMING PARTIAL UNCHANGED FILE IN CACHE, FTP TRANSFER"
-    check_log "replicator resumes file" "Resuming partial file in cache"
-    check_equal "cached and served file are equal" cache/$URL_FTP out2
-    stopserver
-    ;;
-  13)
-    startserver --limit 10
-    http_proxy=localhost:$PORT download http://$URL_HTTP out
-    summary "RATE CONTROL"
-    check "download speed; should be approximately 10240" CHECK
-    check_equal "cached and served file are equal" cache/$URL_HTTP out
-    stopserver
-    ;;
-  14)
-    startserver --static
-    http_proxy=localhost:$PORT download http://$URL_HTTP out1
-    http_proxy=localhost:$PORT download http://$URL_HTTP out2
-    summary "STATIC MODE"
-    check_log "serving directly from cache without consulting server" "Static mode; serving file directly from cache"
-    check_equal "cached and served file are equal" cache/$URL_HTTP out2
-    stopserver
-    ;;
-  15)
-    startserver --offline
-    http_proxy=localhost:$PORT download http://$URL_HTTP out
-    summary "OFF-LINE MODE"
-    check_log "refusing to connect to server" "AssertionError: operating in off-line mode"
-    stopserver
-    ;;
-  16)
-    startserver --flat
-    http_proxy=localhost:$PORT download http://$URL_HTTP out
-    summary "DOWNLOADING NEW FILE, FLAT MODE"
-    check_log "serving complete file" "Replicator responds HTTP/1.1 200 OK"
-    check_exists "file cached and finalized" cache/`basename $URL_HTTP`
-    stopserver
-    ;;
-  *)
-    exit 1
-    ;;
-esac
-exit 0
+for NUM; do
+  case $NUM in
+    1)
+      begintest "$NUM" "DOWNLOADING NEW FILE"
+      download "$URL_HTTP" reference
+      http_proxy_download "$URL_HTTP" out
+      check_exists "file cached and finalized" "$BASE_HTTP"
+      check_equal "reference and served file are equal" reference out
+      check_equal "served and cached file are equal" cache/"$BASE_HTTP" out
+      endtest
+      ;;
+    2)
+      begintest "$NUM" "LEAVING PARTIAL FILE IN CACHE" 192
+      http_proxy_download "$URL_HTTP" out
+      check_exists "file cached, not finalized" "$BASE_HTTP.incomplete"
+      endtest
+      ;;
+    3)
+      begintest "$NUM" "SERVING FILE FROM CACHE"
+      http_proxy_download "$URL_HTTP" out1
+      http_proxy_download "$URL_HTTP" out2
+      check_exists "first file cached and finalized" "$BASE_HTTP"
+      check_log "second file served from cache" "Reading complete file from cache"
+      check_equal "cached and first served file are equal" cache/"$BASE_HTTP" out1
+      check_equal "cached and second served file are equal" cache/"$BASE_HTTP" out2
+      endtest
+      ;;
+    4)
+      begintest "$NUM" "RESUMING PARTIAL FILE BY CLIENT"
+      download "$URL_HTTP" reference
+      head -c 183K "$PREFIX".reference > "$PREFIX".out
+      http_proxy_download "$URL_HTTP" out
+      check_log "received complete file" "Server responds HTTP/1.1 200 OK"
+      check_log "served partial file" "Replicator responds HTTP/1.1 206 Partial Content"
+      check_equal "reference and served file are equal" reference out
+      check_equal "cached and served file are equal" cache/"$BASE_HTTP" out
+      endtest
+      ;;
+    5)
+      begintest "$NUM" "REDOWNLOADING CHANGED FILE"
+      touchfile cache/"$BASE_HTTP" -m -t 190112140000
+      http_proxy_download "$URL_HTTP" out
+      check_log "detected complete file in cache" "Checking complete file in cache"
+      check_log "downloading new file" "Preparing new file in cache"
+      check_equal "cached and served file are equal" cache/"$BASE_HTTP" out
+      endtest
+      ;;
+    6)
+      begintest "$NUM" "RESUMING PARTIAL UNCHANGED FILE IN CACHE" 334
+      http_proxy_download "$URL_HTTP" out1
+      stopserver; sleep 1; startserver
+      http_proxy_download "$URL_HTTP" out2
+      check_log "replicator asks for missing part" "Requesting resume of partial file in cache"
+      check_log "received partial file" "Server responds HTTP/1.1 206 Partial Content"
+      check_equal "cached and served file are equal" cache/"$BASE_HTTP" out2
+      endtest
+      ;;
+    7)
+      begintest "$NUM" "RESUMING PARTIAL CHANGED FILE IN CACHE"
+      touchfile cache/"$BASE_HTTP.incomplete"
+      http_proxy_download "$URL_HTTP" out
+      check_log "replicator asks for missing part" "Requesting resume of partial file in cache"
+      check_log "received complete file" "Server responds HTTP/1.1 200 OK"
+      check_equal "cached and served file are equal" cache/"$BASE_HTTP" out
+      endtest
+      ;;
+    8)
+      begintest "$NUM" "JOINING DOWNLOADS"
+      http_proxy_download "$URL_HTTP" out1 > /dev/null & sleep 1
+      http_proxy_download "$URL_HTTP" out2
+      check_log "downloads are joined" "Joined running download"
+      check_equal "cached and first served file are equal" cache/"$BASE_HTTP" out1
+      check_equal "cached and second served file are equal" cache/"$BASE_HTTP" out2
+      endtest
+      ;;
+    9)
+      begintest "$NUM" "DOWNLOADING NEW FILE, CHUNKED TRANSFER"
+      download "$URL_CHUNKED" reference
+      http_proxy_download "$URL_CHUNKED" out
+      check_equal "separate download and served file are equal" reference out
+      check_log "server sends chunked data" "transfer-encoding: chunked"
+      check_log "processing chunked data" "Switching to ChunkedDataResponse"
+      check_equal "cached and served file are equal" cache/"$BASE_CHUNKED" out
+      endtest
+      ;;
+    10)
+      begintest "$NUM" "DOWNLOADING NEW FILE, FTP TRANSFER"
+      download "$URL_FTP" reference
+      ftp_proxy_download "$URL_FTP" out
+      check_equal "separate download and served file are equal" reference out
+      check_equal "cached and served file are equal" cache/"$BASE_FTP" out
+      endtest
+      ;;
+    11)
+      begintest "$NUM" "SERVING FILE FROM CACHE, FTP TRANSFER"
+      ftp_proxy_download "$URL_FTP" out1
+      ftp_proxy_download "$URL_FTP" out2
+      check_exists "first file cached and finalized" "$BASE_FTP"
+      check_log "second file served from cache" "Reading complete file from cache"
+      check_equal "cached and first served file are equal" cache/"$BASE_FTP" out1
+      check_equal "cached and second served file are equal" cache/"$BASE_FTP" out2
+      endtest
+      ;;
+    12)
+      begintest "$NUM" "RESUMING PARTIAL UNCHANGED FILE IN CACHE, FTP TRANSFER" 377
+      ftp_proxy_download "$URL_FTP" out1
+      stopserver; sleep 1; startserver
+      ftp_proxy_download "$URL_FTP" out2
+      check_log "replicator resumes file" "Resuming partial file in cache"
+      check_equal "cached and served file are equal" cache/"$BASE_FTP" out2
+      endtest
+      ;;
+    13)
+      begintest "$NUM" "RATE CONTROL" '' --limit 10
+      http_proxy_download "$URL_HTTP" out
+      saymsg "download speed: should be approximately 10 KiB/s" "USER" "to verify"
+      check_equal "cached and served file are equal" cache/"$BASE_HTTP" out
+      endtest
+      ;;
+    14)
+      begintest "$NUM" "STATIC MODE" '' --static
+      http_proxy_download "$URL_HTTP" out1
+      http_proxy_download "$URL_HTTP" out2
+      check_log "serving directly from cache without consulting server" "Static mode; serving file directly from cache"
+      check_equal "cached and served file are equal" cache/"$BASE_HTTP" out2
+      endtest
+      ;;
+    15)
+      begintest "$NUM" "OFF-LINE MODE" '' --offline
+      http_proxy_download "$URL_HTTP" out
+      check_log "refusing to connect to server" "AssertionError: operating in off-line mode"
+      endtest
+      ;;
+    16)
+      begintest "$NUM" "DOWNLOADING NEW FILE, FLAT MODE" '' --flat
+      http_proxy_download "$URL_HTTP" out
+      check_log "serving complete file" "Replicator responds HTTP/1.1 200 OK"
+      check_exists "file cached and finalized" "$(basename "$BASE_HTTP")"
+      endtest
+      ;;
+    *)
+      echo "Test $NUM is not defined"
+      ;;
+  esac
+done

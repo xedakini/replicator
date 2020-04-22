@@ -50,7 +50,7 @@ class Fiber:
       if throw:
         assert hasattr( self.__generator, 'throw' ), throw
         self.__generator.throw( AssertionError, throw )
-      state = self.__generator.next()
+      state = next(self.__generator)
       assert isinstance( state, (SEND, RECV, WAIT) ), 'invalid waiting state %r' % state
       self.state = state
     except KeyboardInterrupt:
@@ -58,8 +58,8 @@ class Fiber:
     except StopIteration:
       del self.__generator
       pass
-    except AssertionError, msg:
-      print 'Error:', msg
+    except AssertionError as msg:
+      print('Error:', msg)
     except:
       traceback.print_exc()
 
@@ -123,7 +123,7 @@ class DebugFiber( Fiber ):
       sys.stdout = sys.stderr = self
       Fiber.step( self, throw )
       if self.state:
-        print 'Waiting at', self
+        print('Waiting at', self)
     finally:
       sys.stdout = stdout
       sys.stderr = stderr
@@ -137,20 +137,22 @@ class DebugFiber( Fiber ):
     self.__newline = string.endswith( '\n' )
 
 
-def fork( output ):
+def fork( output, pidfile ):
 
   try:
-    log = open( output, 'w' )
+    log = open( output, 'a' )
     nul = open( '/dev/null', 'r' )
     pid = os.fork()
-  except IOError, e:
-    print 'error: failed to open', e.filename
+    if pidfile:
+      pidout = open(pidfile, 'w') # open pid file for writing
+  except IOError as e:
+    print('error: failed to open', e.filename)
     sys.exit( 1 )
-  except OSError, e:
-    print 'error: failed to fork process:', e.strerror
+  except OSError as e:
+    print('error: failed to fork process:', e.strerror)
     sys.exit( 1 )
-  except Exception, e:
-    print 'error:', e
+  except Exception as e:
+    print('error:', e)
     sys.exit( 1 )
 
   if pid:
@@ -161,14 +163,17 @@ def fork( output ):
     os.chdir( os.sep )
     os.setsid() 
     # -rw-r--r-- / 0644 / u=rw,go=r
-    os.umask( 0022 )
+    os.umask( 0o022 )
     pid = os.fork()
-  except Exception, e: 
-    print 'error:', e
+  except Exception as e: 
+    print('error:', e)
     sys.exit( 1 )
 
   if pid:
-    print pid
+    print(pid)
+    if pidfile:
+      pidout.write(str(pid))
+      pidout.close()
     sys.exit( 0 )
 
   os.dup2( log.fileno(), sys.stdout.fileno() )
@@ -176,27 +181,29 @@ def fork( output ):
   os.dup2( nul.fileno(), sys.stdin.fileno()  )
 
 
-def spawn( generator, port, debug, log ):
+def spawn( generator, bindaddr, port, debug=False, log=None, pidfile=None ):
 
   try:
-    listener = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
+    addrs = socket.getaddrinfo(bindaddr, port, type=socket.SOCK_STREAM)
+    family, socktype, proto, canonname, sockaddr = addrs[0]
+    listener = socket.socket(family, socktype, proto)
     listener.setblocking( 0 )
     listener.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, listener.getsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR ) | 1 )
-    listener.bind( ( '', port ) )
+    listener.bind(sockaddr[:2])
     listener.listen( 5 )
-  except Exception, e:
-    print 'error: failed to create socket:', e
+  except Exception as e:
+    print('error: failed to create socket:', e)
     sys.exit( 1 )
 
   if log:
-    fork( log )
+    fork( log, pidfile )
 
   if debug:
     myFiber = DebugFiber
   else:
     myFiber = GatherFiber
 
-  print '[ INIT ]', generator.__name__, 'started at %s:%i' % ( socket.gethostname(), port )
+  print('[ INIT ]', generator.__name__, 'started at %s:%i' % ( socket.gethostname(), port ))
   try:
 
     fibers = []
@@ -213,7 +220,7 @@ def spawn( generator, port, debug, log ):
         i -= 1
         state = fibers[ i ].state
 
-        if state and now > state.expire:
+        if state and (state.expire is None  or  now > state.expire):
           if isinstance( state, WAIT ):
             fibers[ i ].step()
           else:
@@ -231,14 +238,14 @@ def spawn( generator, port, debug, log ):
         elif state.expire is None:
           continue
 
-        if state.expire < expire or expire is None:
+        if state.expire is None or expire is None or state.expire < expire:
           expire = state.expire
 
       if expire is None:
-        print '[ IDLE ]', time.ctime()
+        print('[ IDLE ]', time.ctime())
         sys.stdout.flush()
         canrecv, cansend, dummy = select.select( tryrecv, trysend, [] )
-        print '[ BUSY ]', time.ctime()
+        print('[ BUSY ]', time.ctime())
         sys.stdout.flush()
       else:
         canrecv, cansend, dummy = select.select( tryrecv, trysend, [], max( expire - now, 0 ) )
@@ -252,9 +259,9 @@ def spawn( generator, port, debug, log ):
         trysend[ fileno ].step()
 
   except KeyboardInterrupt:
-    print '[ DONE ]', generator.__name__, 'terminated'
+    print('[ DONE ]', generator.__name__, 'terminated')
     sys.exit( 0 )
   except:
-    print '[ DONE ]', generator.__name__, 'crashed'
+    print('[ DONE ]', generator.__name__, 'crashed')
     traceback.print_exc( file=sys.stdout )
     sys.exit( 1 )

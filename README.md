@@ -27,6 +27,9 @@ arguments can be used to change this default behaviour:
 
     -h --help
      Show this help message and exit.
+
+    -b --bind ADDRESS
+     bind server to ADDRESS, default=::1
    
     -p --port PORT
      Listen on this port for incoming connections, default 8080.
@@ -39,9 +42,6 @@ arguments can be used to change this default behaviour:
    
     -t --timeout SEC
      Break connection after so many seconds of inactivity, default 15
-   
-    -6 --ipv6
-     Try ipv6 addresses if available
    
     --flat
      Flat mode; cache all files in root directory (dangerous!)
@@ -57,6 +57,10 @@ arguments can be used to change this default behaviour:
    
     --daemon LOG
      Route output to log and detach
+
+    --pid PIDFILE
+     if --daemon is used, write pid of daemon to PIDFILE
    
     --debug
      Switch from gather to debug output module
+

@@ -48,32 +48,32 @@ class DataResponse:
       args = self.__protocol.args()
     except:
       args = {}
-    args[ 'Connection' ] = 'close'
-    args[ 'Date' ] = time.strftime( Params.TIMEFMT[0], time.gmtime() )
+    args[ b'Connection' ] = b'close'
+    args[ b'Date' ] = time.strftime( Params.TIMEFMT[0], time.gmtime() ).encode()
     if self.__protocol.mtime >= 0:
-      args[ 'Last-Modified' ] = time.strftime( Params.TIMEFMT[0], time.gmtime( self.__protocol.mtime ) )
+      args[ b'Last-Modified' ] = time.strftime( Params.TIMEFMT[0], time.gmtime( self.__protocol.mtime ) ).encode()
     if self.__pos == 0 and self.__end == self.__protocol.size:
-      head = 'HTTP/1.1 200 OK'
+      head = b'HTTP/1.1 200 OK'
       if self.__protocol.size >= 0:
-        args[ 'Content-Length' ] = str( self.__protocol.size )
+        args[ b'Content-Length' ] = b'%i' % (self.__protocol.size)
     elif self.__end >= 0:
-      head = 'HTTP/1.1 206 Partial Content'
-      args[ 'Content-Length' ] = str( self.__end - self.__pos )
+      head = b'HTTP/1.1 206 Partial Content'
+      args[ b'Content-Length' ] = b'%i' % (self.__end - self.__pos)
       if self.__protocol.size >= 0:
-        args[ 'Content-Range' ] = 'bytes %i-%i/%i' % ( self.__pos, self.__end - 1, self.__protocol.size )
+        args[ b'Content-Range' ] = b'bytes %i-%i/%i' % ( self.__pos, self.__end - 1, self.__protocol.size )
       else:
-        args[ 'Content-Range' ] = 'bytes %i-%i/*' % ( self.__pos, self.__end - 1 )
+        args[ b'Content-Range' ] = b'bytes %i-%i/*' % ( self.__pos, self.__end - 1 )
     else:
-      head = 'HTTP/1.1 416 Requested Range Not Satisfiable'
-      args[ 'Content-Range' ] = 'bytes */*'
-      args[ 'Content-Length' ] = '0'
+      head = b'HTTP/1.1 416 Requested Range Not Satisfiable'
+      args[ b'Content-Range' ] = b'bytes */*'
+      args[ b'Content-Length' ] = b'0'
 
-    print 'Replicator responds', head
+    print('Replicator responds', head.decode())
     if Params.VERBOSE > 1:
       for key in args:
-        print '> %s: %s' % ( key, args[ key ].replace( '\r\n', ' > ' ) )
+        print('> %s: %s' % ( key.decode(), args[ key ].replace(b'\r\n', b' > ').decode() ))
 
-    self.__sendbuf = '\r\n'.join( [ head ] + map( ': '.join, args.items() ) + [ '', '' ] )
+    self.__sendbuf = b'\r\n'.join( [ head ] + list(map( b': '.join, iter(args.items()) )) + [ b'', b'' ] )
     if Params.LIMIT:
       self.__nextrecv = 0
 
@@ -119,7 +119,7 @@ class DataResponse:
         assert self.__protocol.size == self.__protocol.tell(), 'connection closed prematurely'
       else:
         self.__protocol.size = self.__protocol.tell()
-        print 'Connection closed at byte', self.__protocol.size
+        print('Connection closed at byte', self.__protocol.size)
       self.Done = not self.hasdata()
 
 
@@ -129,7 +129,7 @@ class ChunkedDataResponse( DataResponse ):
 
     DataResponse.__init__( self, protocol, request )
     self.__protocol = protocol
-    self.__recvbuf = ''
+    self.__recvbuf = b''
 
   def recv( self, sock ):
 
@@ -137,19 +137,19 @@ class ChunkedDataResponse( DataResponse ):
     chunk = sock.recv( Params.MAXCHUNK )
     assert chunk, 'chunked data error: connection closed prematurely'
     self.__recvbuf += chunk
-    while '\r\n' in self.__recvbuf:
-      head, tail = self.__recvbuf.split( '\r\n', 1 )
-      chunksize = int( head.split( ';' )[ 0 ], 16 )
+    while b'\r\n' in self.__recvbuf:
+      head, tail = self.__recvbuf.split( b'\r\n', 1 )
+      chunksize = int( head.split( b';' )[ 0 ], 16 )
       if chunksize == 0:
         self.__protocol.size = self.__protocol.tell()
-        print 'Connection closed at byte', self.__protocol.size
+        print('Connection closed at byte', self.__protocol.size)
         self.Done = not self.hasdata()
         return
       if len( tail ) < chunksize + 2:
         return
-      assert tail[ chunksize:chunksize+2 ] == '\r\n', 'chunked data error: chunk does not match announced size'
+      assert tail[ chunksize:chunksize+2 ] == b'\r\n', 'chunked data error: chunk does not match announced size'
       if Params.VERBOSE > 1:
-        print 'Received', chunksize, 'byte chunk'
+        print('Received', chunksize, 'byte chunk')
       self.__protocol.write( tail[ :chunksize ] )
       self.__recvbuf = tail[ chunksize+2: ]
 
@@ -160,16 +160,16 @@ class DirectResponse:
 
   def __init__( self, status, request ):
 
-    lines = [ 'HTTP Replicator: %s' % status, '', 'Requesting:' ]
-    head, body = request.recvbuf().split( '\r\n\r\n', 1 )
+    lines = [ b'HTTP Replicator: %s' % status, b'', b'Requesting:' ]
+    head, body = request.recvbuf().split( b'\r\n\r\n', 1 )
     for line in head.splitlines():
-      lines.append( len( line ) > 78 and '  %s...' % line[ :75 ] or '  %s' % line )
+      lines.append( len( line ) > 78 and b'  %s...' % line[ :75 ] or b'  %s' % line )
     if body:
-      lines.append( '+ Body: %i bytes' % len( body ) )
-    lines.append( '' )
-    lines.append( traceback.format_exc() )
+      lines.append( b'+ Body: %i bytes' % len( body ) )
+    lines.append( b'' )
+    lines.append( traceback.format_exc().encode() )
 
-    self.__sendbuf = 'HTTP/1.1 %s\r\nContent-Type: text/plain\r\n\r\n%s' % ( status, '\n'.join( lines ) )
+    self.__sendbuf = b'HTTP/1.1 %s\r\nContent-Type: text/plain\r\n\r\n%s' % ( status, b'\n'.join( lines ) )
     
   def hasdata( self ):
 
@@ -196,7 +196,7 @@ class NotFoundResponse( DirectResponse ):
 
   def __init__( self, protocol, request ):
 
-    DirectResponse.__init__( self, '404 Not Found', request )
+    DirectResponse.__init__( self, b'404 Not Found', request )
 
 
 class ExceptionResponse( DirectResponse ):
@@ -204,4 +204,4 @@ class ExceptionResponse( DirectResponse ):
   def __init__( self, request ):
 
     traceback.print_exc()
-    DirectResponse.__init__( self, '500 Internal Server Error', request )
+    DirectResponse.__init__( self, b'500 Internal Server Error', request )
