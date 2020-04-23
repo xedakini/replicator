@@ -170,7 +170,7 @@ class DirectResponse:
     lines.append( traceback.format_exc().encode() )
 
     self.__sendbuf = b'HTTP/1.1 %s\r\nContent-Type: text/plain\r\n\r\n%s' % ( status, b'\n'.join( lines ) )
-    
+
   def hasdata( self ):
 
     return bool( self.__sendbuf )

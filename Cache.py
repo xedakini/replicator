@@ -9,7 +9,7 @@ class File:
   def __init__( self, path ):
 
     if Params.MAXFILELEN > -1:
-      newpath = os.sep.join( item if len(item) <= Params.MAXFILELEN else 
+      newpath = os.sep.join( item if len(item) <= Params.MAXFILELEN else
         item[:Params.MAXFILELEN-34] + '..' + hashlib.md5( item[Params.MAXFILELEN-34:] ).hexdigest()
           for item in path.split( os.sep ) )
       if newpath != path:

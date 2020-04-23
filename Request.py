@@ -87,7 +87,7 @@ class HttpRequest:
       if cmd == 'GET':
         proto = Protocol.HttpProtocol
       else:
-        proto = Protocol.BlindProtocol      
+        proto = Protocol.BlindProtocol
     else:
       raise AssertionError('invalid url: %s' % url)
 
@@ -158,4 +158,4 @@ class HttpRequest:
   def __eq__( self, other ):
 
     assert self.cache == other.cache
-    
+
