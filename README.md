@@ -17,6 +17,18 @@ The following example session demonstrates basic usage.
     /tmp/cache
     /tmp/cache/www.python.org:80
     /tmp/cache/www.python.org:80/index.html
+    
+HTTP Replicator can be used also as transparent proxy if traffic is redirected
+by iptables:
+
+    iptables -t nat -A OUTPUT -p tcp -m owner ! --uid-owner <user> --dport 80 -j REDIRECT --to-port <port>
+    
+Then you can use just simple command without http_proxy variable:
+
+    wget http://www.python.org/index.html
+    
+The <user> in this example must be user who run the http-replicator and this user must differ from user
+who is sending requests (wget, curl ...). <port> is http-replicator port.
 
 Replicator has reasonable defaults for all its settings, which means it can be
 run without command line arguments. In that case it will listen at port 8080,
