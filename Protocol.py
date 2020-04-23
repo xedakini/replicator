@@ -130,7 +130,7 @@ class HttpProtocol( Cache.File ):
       key, value = line.split( b':', 1 )
       key = key.title()
       if key in self.__args:
-        self.__args[ key ] += b'\r\n' + key + ': ' + value.strip()
+        self.__args[ key ] += b'\r\n' + key + b': ' + value.strip()
       else:
         self.__args[ key ] = value.strip()
     elif line in ( b'\r\n', b'\n' ):
