@@ -140,11 +140,19 @@ class DebugFiber( Fiber ):
 def fork( output, pidfile ):
 
   try:
+    # attempt most os activity early, to catch errors before we fork
     log = open( output, 'a' )
     nul = open( '/dev/null', 'r' )
-    pid = os.fork()
+    pidout = None
     if pidfile:
       pidout = open(pidfile, 'w') # open pid file for writing
+    os.chdir( os.sep )
+    os.setsid()
+    # -rw-r--r-- / 0644 / u=rw,go=r
+    os.umask( 0o022 )
+
+    #first fork: create intermediate child process
+    pid = os.fork()
   except IOError as e:
     print('error: failed to open', e.filename)
     sys.exit( 1 )
@@ -156,24 +164,24 @@ def fork( output, pidfile ):
     sys.exit( 1 )
 
   if pid:
+    #parent process waits for child to create daemon and exit
     cpid, status = os.wait()
     sys.exit( status >> 8 )
 
   try:
-    os.chdir( os.sep )
-    os.setsid()
-    # -rw-r--r-- / 0644 / u=rw,go=r
-    os.umask( 0o022 )
+    #second fork; will next orphan resulting granchild as daemon:
     pid = os.fork()
   except Exception as e:
     print('error:', e)
     sys.exit( 1 )
 
   if pid:
-    print(pid)
-    if pidfile:
+    #child successfully spawned grandchild; report grandchild pid and exit child
+    if pidout:
       pidout.write(str(pid))
       pidout.close()
+    else:
+      print(pid)
     sys.exit( 0 )
 
   os.dup2( log.fileno(), sys.stdout.fileno() )
