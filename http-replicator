@@ -52,4 +52,11 @@ def Replicator( client, address ):
   logging.info('Transaction successfully completed')
 
 
+import Params
+Params.parse_args()
+Params.setup_logging()
+Params.chdir()
+listener = Params.get_listener()
+Params.daemonize()
+
 fiber.spawn(Replicator, OPTS.listener, OPTS.debug)

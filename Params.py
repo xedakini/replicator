@@ -1,5 +1,7 @@
 import argparse, socket, sys, os, logging
 
+OPTS = None
+
 def parse_args():
   def port_number(s):
     port = int(s)
@@ -38,12 +40,42 @@ def parse_args():
         help='if --daemon is used, write pid of daemon to PIDFILE')
   parser.add_argument('--debug', action='store_true',
         help='switch from "gather" to "debug" output module')
-  return parser.parse_args()
+
+  global OPTS
+  OPTS = parser.parse_args()
+  OPTS.limit *= 1024
+  OPTS.maxchunk = 1448 # maximum lan packet?
+  OPTS.suffix = '.incomplete'
+  OPTS.maxfilelen = os.pathconf('.', 'PC_NAME_MAX') - len(OPTS.suffix)
+  OPTS.timefmt = (
+      '%a, %d %b %Y %H:%M:%S GMT',
+      '%a, %d %b %Y %H:%M:%S +0000 GMT',
+      '%a, %d %b %Y %H:%M:%S +0000',
+      )
 
 
-def get_listener(bindaddr, port):
+def setup_logging():
+  global OPTS
+  OPTS._logstream = sys.stdout
+  if OPTS.daemon:
+    OPTS._logstream = open(OPTS.daemon, 'a')
+
+  #map OPTS.verbose to logging level: 0=info, 1=debug, 2=notset
+  logging.basicConfig(stream=OPTS._logstream,
+          level=max(1,10*(2-OPTS.verbose)),
+          format='%(message)s', style='%')
+  with open('/dev/null', 'r') as nul:
+    os.dup2(nul.fileno(), sys.stdin.fileno())
+ 
+def chdir():
   try:
-    addrs = socket.getaddrinfo(bindaddr, port, type=socket.SOCK_STREAM)
+    os.chdir(OPTS.root)
+  except Exception as e:
+    sys.exit(f'Error: invalid cache directory {OPTS.root} - ({e})')
+
+def get_listener():
+  try:
+    addrs = socket.getaddrinfo(OPTS.bind, OPTS.port, type=socket.SOCK_STREAM)
     family, socktype, proto, canonname, sockaddr = addrs[0]
     listener = socket.socket(family, socktype, proto)
     listener.setblocking(0)
@@ -56,26 +88,14 @@ def get_listener(bindaddr, port):
     sys.exit(f'error: failed to create socket: {e}')
 
 
-def setup_io(outfile):
-  out = sys.stdout
-  if outfile:
-    out = open(outfile, 'a')
-
-  #map OPTS.verbose to logging level: 0=info, 1=debug, 2=notset
-  logging.basicConfig(stream=out,
-          level=max(1,10*(2-OPTS.verbose)),
-          format='%(message)s', style='%')
-  with open('/dev/null', 'r') as nul:
-    os.dup2(nul.fileno(), sys.stdin.fileno())
-  return out
-
-
-def daemonize(output, pidfile):
+def daemonize():
+  if not OPTS.daemon:
+    return
   try:
     # attempt most os activity early, to catch errors before we fork
     pidout = None
-    if pidfile:
-      pidout = open(pidfile, 'w') # open pid file for writing
+    if OPTS.pidfile:
+      pidout = open(OPTS.pidfile, 'w') # open pid file for writing
     os.setsid()
     # -rw-r--r-- / 0644 / u=rw,go=r
     os.umask(0o022)
@@ -109,27 +129,5 @@ def daemonize(output, pidfile):
       print(pid)
     sys.exit(0)
 
-  os.dup2(output.fileno(), sys.stdout.fileno())
-  os.dup2(output.fileno(), sys.stderr.fileno())
-
-
-### pseudo-main of this module:
-OPTS = parse_args()
-OPTS._logstream = setup_io(OPTS.daemon)
-OPTS.limit *= 1024
-OPTS.maxchunk = 1448 # maximum lan packet?
-OPTS.suffix = '.incomplete'
-OPTS.maxfilelen = os.pathconf('.', 'PC_NAME_MAX') - len(OPTS.suffix)
-OPTS.timefmt = (
-        '%a, %d %b %Y %H:%M:%S GMT',
-        '%a, %d %b %Y %H:%M:%S +0000 GMT',
-        '%a, %d %b %Y %H:%M:%S +0000',
-        )
-
-try:
-  os.chdir(OPTS.root)
-except Exception as e:
-  sys.exit(f'Error: invalid cache directory {OPTS.root} - ({e})')
-OPTS.listener = get_listener(OPTS.bind, OPTS.port)
-if OPTS.daemon:
-  daemonize(OPTS._logstream, OPTS.pidfile)
+  os.dup2(OPTS._logstream.fileno(), sys.stdout.fileno())
+  os.dup2(OPTS._logstream.fileno(), sys.stderr.fileno())
