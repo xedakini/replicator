@@ -1,12 +1,12 @@
 #! /usr/bin/env python
 
-import Params, Request, Response, fiber, weakref
+import Params, Request, Response, fiber, weakref, logging
 
 DOWNLOADS = weakref.WeakValueDictionary()
 
 def Replicator( client, address ):
 
-  print('Accepted request from %s:%i' % address[:2])
+  logging.info(f'Accepted request from [{address[0]}:{address[1]}')
 
   request = Request.HttpRequest( client )
   for state in request:
@@ -17,14 +17,13 @@ def Replicator( client, address ):
       protocol = DOWNLOADS[ request ]
       if protocol.Response:
         if issubclass( protocol.Response, Response.DataResponse ):
-          print('Joined running download')
+          logging.info('Joined running download')
           break
         del DOWNLOADS[ request ]
       else:
         yield fiber.WAIT()
     else:
-      if Params.VERBOSE:
-        print('Switching to', request.Protocol.__name__)
+      logging.debug(f'Switching to {request.Protocol.__name__}')
       protocol = DOWNLOADS[ request ] = request.Protocol( request )
       server = protocol.socket()
       while not protocol.Response:
@@ -34,13 +33,11 @@ def Replicator( client, address ):
         else:
           yield fiber.RECV( server, Params.TIMEOUT )
           protocol.recv( server )
-    if Params.VERBOSE:
-      print('Switching to', protocol.Response.__name__)
+    logging.debug(f'Switching to {protocol.Response.__name__}')
     response = protocol.Response( protocol, request )
     server = protocol.socket()
   except Exception:
-    if Params.VERBOSE:
-      print('Switching to ExceptionResponse')
+    logging.debug('Switching to ExceptionResponse')
     response = Response.ExceptionResponse( request )
 
   while not response.Done:
@@ -53,6 +50,6 @@ def Replicator( client, address ):
       yield fiber.RECV( server, Params.TIMEOUT )
       response.recv( server )
 
-  print('Transaction successfully completed')
+  logging.info('Transaction successfully completed')
 
 fiber.spawn(Replicator, Params.opts.listener, Params.opts.debug)

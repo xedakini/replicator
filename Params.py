@@ -1,4 +1,4 @@
-import argparse, socket, sys, os
+import argparse, socket, sys, os, logging
 
 def parse_args():
   def port_number(s):
@@ -104,10 +104,14 @@ def fork(output, pidfile):
 
 ### pseudo-main of this module:
 opts = parse_args()
+#map opts.verbose to logging level: 0=info, 1=debug, 2=notset
+logging.basicConfig(filename=opts.daemon,
+        level=max(1,10*(2-opts.verbose)),
+        format='%(message)s', style='%')
 try:
-    os.chdir(opts.root)
+  os.chdir(opts.root)
 except Exception as e:
-    sys.exit('Error: invalid cache directory {opts.root} - ({e})')
+  sys.exit(f'Error: invalid cache directory {opts.root} - ({e})')
 
 opts.listener = get_listener(opts.bind, opts.port)
 if opts.daemon:
@@ -116,7 +120,6 @@ if opts.daemon:
 
 
 # allow old names (for now)
-VERBOSE = opts.verbose
 TIMEOUT = opts.timeout
 FLAT = opts.flat
 STATIC = opts.static

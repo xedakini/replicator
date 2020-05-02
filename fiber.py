@@ -1,4 +1,4 @@
-import sys, os, select, time, traceback
+import sys, os, select, time, logging
 
 
 class SEND:
@@ -59,9 +59,9 @@ class Fiber:
       del self.__generator
       pass
     except AssertionError as msg:
-      print('Error:', msg)
+      logging.error(f'Error: {msg}')
     except:
-      traceback.print_exc()
+      logging.error(f'Error: {msg}', exc_info=1)
 
   def __repr__( self ):
 
@@ -123,7 +123,7 @@ class DebugFiber( Fiber ):
       sys.stdout = sys.stderr = self
       Fiber.step( self, throw )
       if self.state:
-        print('Waiting at', self)
+        logging.info(f'Waiting at {self}')
     finally:
       sys.stdout = stdout
       sys.stderr = stderr
@@ -143,7 +143,7 @@ def spawn(generator, listener, debug=False):
   else:
     myFiber = GatherFiber
 
-  print(f'[ INIT ] {generator.__name__} started at [%s]:%i' % listener.getsockname()[:2])
+  logging.info(f'[ INIT ] {generator.__name__} started at [%s]:%i' % listener.getsockname()[:2])
   try:
 
     fibers = []
@@ -182,10 +182,10 @@ def spawn(generator, listener, debug=False):
           expire = state.expire
 
       if expire is None:
-        print('[ IDLE ]', time.ctime())
+        logging.info(f'[ IDLE ] {time.ctime()}')
         sys.stdout.flush()
         canrecv, cansend, dummy = select.select( tryrecv, trysend, [] )
-        print('[ BUSY ]', time.ctime())
+        logging.info(f'[ BUSY ] {time.ctime()}')
         sys.stdout.flush()
       else:
         canrecv, cansend, dummy = select.select( tryrecv, trysend, [], max( expire - now, 0 ) )
@@ -199,9 +199,8 @@ def spawn(generator, listener, debug=False):
         trysend[ fileno ].step()
 
   except KeyboardInterrupt:
-    print('[ DONE ]', generator.__name__, 'terminated')
-    sys.exit( 0 )
+    logging.info(f'[ DONE ] {generator.__name__} terminated')
+    sys.exit(0)
   except:
-    print('[ DONE ]', generator.__name__, 'crashed')
-    traceback.print_exc( file=sys.stdout )
-    sys.exit( 1 )
+    logging.exception(f'[ DONE ] {generator.__name__} crashed')
+    sys.exit(f'{generator.__name__} crashed')

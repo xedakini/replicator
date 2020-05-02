@@ -1,19 +1,19 @@
-import Params, Response, Cache, time, socket, os, sys, re, calendar
+import Params, Response, Cache, time, socket, os, sys, re, calendar, logging
 
 
 DNSCache = {}
+DEBUG2 = 5 #logging level 5 is lower priority than than regular logging.DEBUG(==10)
 
 def connect( addr ):
 
   assert Params.ONLINE, 'operating in off-line mode'
   if addr not in DNSCache:
-    if Params.VERBOSE:
-      print('Requesting address info for %s:%i' % addr)
+    logging.debug(f'Requesting address info for {addr[0]}:{addr[1]}')
     DNSCache[ addr ] = socket.getaddrinfo( addr[ 0 ], addr[ 1 ], socket.AF_UNSPEC, socket.SOCK_STREAM )
 
   family, socktype, proto, canonname, sockaddr = DNSCache[ addr ][ 0 ]
 
-  print('Connecting to %s:%i' % sockaddr[:2])
+  logging.info(f'Connecting to [{sockaddr[0]}]:[{sockaddr[1]}]')
   sock = socket.socket( family, socktype, proto )
   sock.setblocking( 0 )
   sock.connect_ex( sockaddr )
@@ -63,7 +63,7 @@ class HttpProtocol( Cache.File ):
     Cache.File.__init__( self, request.cache )
 
     if Params.STATIC and self.full():
-      print('Static mode; serving file directly from cache')
+      logging.info('Static mode; serving file directly from cache')
       self.__socket = None
       self.open_full()
       self.Response = Response.DataResponse
@@ -78,10 +78,10 @@ class HttpProtocol( Cache.File ):
       size = stat.st_size
       mtime = time.strftime( Params.TIMEFMT[0], time.gmtime( stat.st_mtime ) )
       if self.partial():
-        print('Requesting resume of partial file in cache: %i bytes, %s' % ( size, mtime ))
+        logging.info(f'Requesting resume of partial file in cache: {size} bytes, {mtime}')
         args[ b'Range' ] = b'bytes=%i-' % size
       else:
-        print('Checking complete file in cache: %i bytes, %s' % ( size, mtime ))
+        logging.info(f'Checking complete file in cache: {size} bytes, {mtime}')
         args[ b'If-Modified-Since' ] = mtime.encode()
 
     self.__socket = connect( request.addr )
@@ -107,7 +107,7 @@ class HttpProtocol( Cache.File ):
       return 0
 
     line = chunk[ :eol ]
-    print('Server responds %s' % line.rstrip().decode())
+    logging.info(f'Server responds {line.rstrip().decode()}')
     fields = line.split()
     assert len( fields ) >= 3 and fields[ 0 ].startswith( b'HTTP/' ) and fields[ 1 ].isdigit(), 'invalid header line: %r' % line
     self.__status = int( fields[ 1 ] )
@@ -125,8 +125,7 @@ class HttpProtocol( Cache.File ):
 
     line = chunk[ :eol ]
     if b':' in line:
-      if Params.VERBOSE > 1:
-        print('>', line.rstrip().decode())
+      logging.log(DEBUG2, f'> {line.rstrip().decode()}')
       key, value = line.split( b':', 1 )
       key = key.title()
       if key in self.__args:
@@ -136,7 +135,7 @@ class HttpProtocol( Cache.File ):
     elif line in ( b'\r\n', b'\n' ):
       self.__parse = None
     else:
-      print('Ignored header line:', line)
+      logging.info(f'Ignored header line: {line}')
 
     return eol
 
@@ -262,12 +261,11 @@ class FtpProtocol( Cache.File ):
     self.__recvbuf += chunk
     while b'\n' in self.__recvbuf:
       reply, self.__recvbuf = self.__recvbuf.split( b'\n', 1 )
-      if Params.VERBOSE > 1:
-        print('S:', reply.rstrip().decode())
+      logging.log(DEBUG2, f'S: {reply.rstrip().decode()}')
       if reply[:3].isdigit() and reply[3:4] != b'-':
         self.__handle( self, int( reply[ :3 ] ), reply[ 4: ] )
-        if self.__sendbuf and Params.VERBOSE > 1:
-          print('C:', self.__sendbuf.rstrip().decode())
+        if self.__sendbuf:
+          logging.log(DEBUG2, f'C: {self.__sendbuf.rstrip().decode()}')
 
   def __handle_serviceready( self, code, line ):
 
@@ -327,7 +325,7 @@ class FtpProtocol( Cache.File ):
 
     assert code == 213, 'server sends %i; expected 213 (file status)' % code
     self.size = int( line )
-    print('File size:', self.size)
+    logging.info(f'File size: {self.size}')
     self.__sendbuf = b'MDTM %s\r\n' % self.__path
     self.__handle = FtpProtocol.__handle_mtime
 
@@ -339,7 +337,7 @@ class FtpProtocol( Cache.File ):
 
     assert code == 213, 'server sends %i; expected 213 (file status)' % code
     self.mtime = calendar.timegm( time.strptime( line.decode().rstrip(), '%Y%m%d%H%M%S' ) )
-    print('Modification time:', time.strftime( Params.TIMEFMT[0], time.gmtime( self.mtime ) ))
+    logging.info(f'Modification time: {time.strftime(Params.TIMEFMT[0], time.gmtime(self.mtime))}')
     stat = self.partial()
     if stat:
       self.__sendbuf = b'REST %i\r\n' % stat.st_size

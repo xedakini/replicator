@@ -1,4 +1,4 @@
-import Params, Protocol, socket, os, fiber
+import Params, Protocol, logging, socket, os, fiber
 
 
 class HttpRequest:
@@ -24,7 +24,7 @@ class HttpRequest:
       yield fiber.RECV( self.client, Params.TIMEOUT )
       recvbuf += self.recv()
     header, recvbuf = recvbuf.split( b'\n', 1 )
-    print('Client sends', header.rstrip().decode())
+    logging.info(f'Client sends {header.rstrip().decode()}')
 
     args = {}
     while True:
@@ -33,14 +33,13 @@ class HttpRequest:
         recvbuf += self.recv()
       line, recvbuf = recvbuf.split( b'\n', 1 )
       if b':' in line:
-        if Params.VERBOSE > 1:
-          print('>', line.rstrip().decode())
+        logging.debug(f'> {line.rstrip().decode()}')
         key, value = line.split( b':', 1 )
         key = key.title()
         assert key not in args, 'duplicate key: %s' % key
         args[ key ] = value.strip()
       elif line and line != b'\r':
-        print('Ignored header line: %r' % line.rstrip())
+        logging.info(f'Ignored header line: {line.rstrip().decode()}')
       else:
         break
 
@@ -48,8 +47,7 @@ class HttpRequest:
     self.__parse_args( args )
 
     if self.size:
-      if Params.VERBOSE:
-        print('Opening temporary file for POST upload')
+      logging.debug('Opening temporary file for POST upload')
       self.body = os.tmpfile()
       self.body.write( recvbuf )
       while self.body.tell() < self.size:

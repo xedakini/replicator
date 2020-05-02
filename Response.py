@@ -1,4 +1,4 @@
-import Params, time, traceback
+import Params, time, traceback, logging
 
 
 class BlindResponse:
@@ -68,10 +68,10 @@ class DataResponse:
       args[ b'Content-Range' ] = b'bytes */*'
       args[ b'Content-Length' ] = b'0'
 
-    print('Replicator responds', head.decode())
-    if Params.VERBOSE > 1:
+    logging.info(f'Replicator responds {head.decode()}')
+    if logging.root.getEffectiveLevel() < logging.INFO:
       for key in args:
-        print('> %s: %s' % ( key.decode(), args[ key ].replace(b'\r\n', b' > ').decode() ))
+        logging.debug('> %s: %s', key.decode(), args[key].replace(b'\r\n', b' > ').decode())
 
     self.__sendbuf = b'\r\n'.join( [ head ] + list(map( b': '.join, iter(args.items()) )) + [ b'', b'' ] )
     if Params.LIMIT:
@@ -119,7 +119,7 @@ class DataResponse:
         assert self.__protocol.size == self.__protocol.tell(), 'connection closed prematurely'
       else:
         self.__protocol.size = self.__protocol.tell()
-        print('Connection closed at byte', self.__protocol.size)
+        logging.info(f'Connection closed at byte {self.__protocol.size}')
       self.Done = not self.hasdata()
 
 
@@ -142,14 +142,13 @@ class ChunkedDataResponse( DataResponse ):
       chunksize = int( head.split( b';' )[ 0 ], 16 )
       if chunksize == 0:
         self.__protocol.size = self.__protocol.tell()
-        print('Connection closed at byte', self.__protocol.size)
+        logging.info(f'Connection closed at byte {self.__protocol.size}')
         self.Done = not self.hasdata()
         return
       if len( tail ) < chunksize + 2:
         return
       assert tail[ chunksize:chunksize+2 ] == b'\r\n', 'chunked data error: chunk does not match announced size'
-      if Params.VERBOSE > 1:
-        print('Received', chunksize, 'byte chunk')
+      logging.debug(f'Received {chunksize} byte chunk')
       self.__protocol.write( tail[ :chunksize ] )
       self.__recvbuf = tail[ chunksize+2: ]
 
@@ -202,6 +201,5 @@ class NotFoundResponse( DirectResponse ):
 class ExceptionResponse( DirectResponse ):
 
   def __init__( self, request ):
-
-    traceback.print_exc()
+    logging.exception('ExceptionResponse invoked')
     DirectResponse.__init__( self, b'500 Internal Server Error', request )
