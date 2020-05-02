@@ -1,5 +1,5 @@
-import Params, os, hashlib, logging
-
+import os, hashlib, logging
+from Params import opts as OPTS
 
 class File:
 
@@ -12,22 +12,22 @@ class File:
     if sep != -1:
       path = path[:sep] + path[sep:].replace('/', '%2F')
 
-    if Params.MAXFILELEN > -1:
-      newpath = os.sep.join( item if len(item) <= Params.MAXFILELEN else
-        item[:Params.MAXFILELEN-34] + '..' + hashlib.md5( item[Params.MAXFILELEN-34:] ).hexdigest()
+    if OPTS.maxfilelen > -1:
+      newpath = os.sep.join( item if len(item) <= OPTS.maxfilelen else
+        item[:OPTS.maxfilelen-34] + '..' + hashlib.md5( item[OPTS.maxfilelen-34:] ).hexdigest()
           for item in path.split( os.sep ) )
       if newpath != path:
         logging.info('Shortened path to %s characters', '/'.join( str(len(w)) for w in newpath.split(os.sep) ))
         path = newpath
 
-    if Params.FLAT:
+    if OPTS.flat:
       path = os.path.basename( path )
     if path[0] == os.sep or path[:3] == '..'+os.sep:
         raise AssertionError(f'requested cache path outside of cache root: {origpath}')
     logging.debug(f'Cache position: {path}')
 
     self.__path = path
-    self.__temppath = path + Params.SUFFIX
+    self.__temppath = path + OPTS.suffix
     self.__file = None
 
   def partial( self ):

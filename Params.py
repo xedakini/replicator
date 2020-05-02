@@ -104,6 +104,16 @@ def fork(output, pidfile):
 
 ### pseudo-main of this module:
 opts = parse_args()
+opts.limit *= 1024
+opts.maxchunk = 1448 # maximum lan packet?
+opts.suffix = '.incomplete'
+opts.maxfilelen = os.pathconf('.', 'PC_NAME_MAX') - len(opts.suffix)
+opts.timefmt = (
+        '%a, %d %b %Y %H:%M:%S GMT',
+        '%a, %d %b %Y %H:%M:%S +0000 GMT',
+        '%a, %d %b %Y %H:%M:%S +0000',
+        )
+
 #map opts.verbose to logging level: 0=info, 1=debug, 2=notset
 logging.basicConfig(filename=opts.daemon,
         level=max(1,10*(2-opts.verbose)),
@@ -112,26 +122,6 @@ try:
   os.chdir(opts.root)
 except Exception as e:
   sys.exit(f'Error: invalid cache directory {opts.root} - ({e})')
-
 opts.listener = get_listener(opts.bind, opts.port)
 if opts.daemon:
   fork(opts.daemon, opts.pidfile)
-
-
-
-# allow old names (for now)
-TIMEOUT = opts.timeout
-FLAT = opts.flat
-STATIC = opts.static
-ONLINE = not opts.offline
-LIMIT = opts.limit * 1024
-
-# some non-commandline parameters
-MAXCHUNK = 1448 # maximum lan packet?
-SUFFIX = '.incomplete'
-MAXFILELEN = os.pathconf('.', 'PC_NAME_MAX') - len(SUFFIX)
-TIMEFMT = (
-        '%a, %d %b %Y %H:%M:%S GMT',
-        '%a, %d %b %Y %H:%M:%S +0000 GMT',
-        '%a, %d %b %Y %H:%M:%S +0000',
-        )

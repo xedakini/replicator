@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 
-import Params, Request, Response, fiber, weakref, logging
+import Request, Response, fiber, weakref, logging
+from Params import opts as OPTS
 
 DOWNLOADS = weakref.WeakValueDictionary()
 
@@ -28,10 +29,10 @@ def Replicator( client, address ):
       server = protocol.socket()
       while not protocol.Response:
         if protocol.hasdata():
-          yield fiber.SEND( server, Params.TIMEOUT )
+          yield fiber.SEND(server, OPTS.timeout)
           protocol.send( server )
         else:
-          yield fiber.RECV( server, Params.TIMEOUT )
+          yield fiber.RECV(server, OPTS.timeout)
           protocol.recv( server )
     logging.debug(f'Switching to {protocol.Response.__name__}')
     response = protocol.Response( protocol, request )
@@ -42,14 +43,14 @@ def Replicator( client, address ):
 
   while not response.Done:
     if response.hasdata():
-      yield fiber.SEND( client, Params.TIMEOUT )
+      yield fiber.SEND(client, OPTS.timeout)
       response.send( client )
     elif response.needwait():
       yield fiber.WAIT( response.needwait() )
     else:
-      yield fiber.RECV( server, Params.TIMEOUT )
+      yield fiber.RECV(server, OPTS.timeout)
       response.recv( server )
 
   logging.info('Transaction successfully completed')
 
-fiber.spawn(Replicator, Params.opts.listener, Params.opts.debug)
+fiber.spawn(Replicator, OPTS.listener, OPTS.debug)

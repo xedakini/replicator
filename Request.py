@@ -1,4 +1,5 @@
-import Params, Protocol, logging, socket, os, fiber
+import Protocol, logging, socket, os, fiber
+from Params import opts as OPTS
 
 
 class HttpRequest:
@@ -9,7 +10,7 @@ class HttpRequest:
 
   def recv( self ):
 
-    chunk = self.client.recv( Params.MAXCHUNK )
+    chunk = self.client.recv(OPTS.maxchunk)
     assert chunk, 'client closed connection prematurely'
     return chunk
 
@@ -21,7 +22,7 @@ class HttpRequest:
 
     recvbuf = b''
     while b'\n' not in recvbuf:
-      yield fiber.RECV( self.client, Params.TIMEOUT )
+      yield fiber.RECV(self.client, OPTS.timeout)
       recvbuf += self.recv()
     header, recvbuf = recvbuf.split( b'\n', 1 )
     logging.info(f'Client sends {header.rstrip().decode()}')
@@ -29,7 +30,7 @@ class HttpRequest:
     args = {}
     while True:
       while b'\n' not in recvbuf:
-        yield fiber.RECV( self.client, Params.TIMEOUT )
+        yield fiber.RECV(self.client, OPTS.timeout)
         recvbuf += self.recv()
       line, recvbuf = recvbuf.split( b'\n', 1 )
       if b':' in line:
@@ -51,7 +52,7 @@ class HttpRequest:
       self.body = os.tmpfile()
       self.body.write( recvbuf )
       while self.body.tell() < self.size:
-        yield fiber.RECV( self.client, Params.TIMEOUT )
+        yield fiber.RECV(self.client, OPTS.timeout)
         self.body.write( self.recv() )
       assert self.body.tell() == self.size, 'message body exceeds content-length'
     else:

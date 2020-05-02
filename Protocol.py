@@ -1,4 +1,5 @@
-import Params, Response, Cache, time, socket, os, sys, re, calendar, logging
+import Response, Cache, time, socket, os, sys, re, calendar, logging
+from Params import opts as OPTS
 
 
 DNSCache = {}
@@ -6,7 +7,7 @@ DEBUG2 = 5 #logging level 5 is lower priority than than regular logging.DEBUG(==
 
 def connect( addr ):
 
-  assert Params.ONLINE, 'operating in off-line mode'
+  assert not OPTS.offline, 'operating in off-line mode'
   if addr not in DNSCache:
     logging.debug(f'Requesting address info for {addr[0]}:{addr[1]}')
     DNSCache[ addr ] = socket.getaddrinfo( addr[ 0 ], addr[ 1 ], socket.AF_UNSPEC, socket.SOCK_STREAM )
@@ -62,7 +63,7 @@ class HttpProtocol( Cache.File ):
 
     Cache.File.__init__( self, request.cache )
 
-    if Params.STATIC and self.full():
+    if OPTS.static and self.full():
       logging.info('Static mode; serving file directly from cache')
       self.__socket = None
       self.open_full()
@@ -76,7 +77,7 @@ class HttpProtocol( Cache.File ):
     stat = self.partial() or self.full()
     if stat:
       size = stat.st_size
-      mtime = time.strftime( Params.TIMEFMT[0], time.gmtime( stat.st_mtime ) )
+      mtime = time.strftime(OPTS.timefmt[0], time.gmtime(stat.st_mtime))
       if self.partial():
         logging.info(f'Requesting resume of partial file in cache: {size} bytes, {mtime}')
         args[ b'Range' ] = b'bytes=%i-' % size
@@ -143,7 +144,7 @@ class HttpProtocol( Cache.File ):
 
     assert not self.hasdata()
 
-    chunk = sock.recv( Params.MAXCHUNK, socket.MSG_PEEK )
+    chunk = sock.recv(OPTS.maxchunk, socket.MSG_PEEK)
     assert chunk, 'server closed connection before sending a complete message header'
     self.__recvbuf += chunk
     while self.__parse:
@@ -158,7 +159,7 @@ class HttpProtocol( Cache.File ):
 
       self.open_new()
       if b'Last-Modified' in self.__args:
-        for timefmt in Params.TIMEFMT:
+        for timefmt in OPTS.timefmt:
           try:
             mtime = calendar.timegm( time.strptime( self.__args[b'Last-Modified'].decode(), timefmt ) )
           except ValueError:
@@ -168,7 +169,7 @@ class HttpProtocol( Cache.File ):
             break
         else: # all time format strings failed
           # raise exception presumably similar to above silenced exception
-          raise ValueError("time data '%s' does not match formats %s" % (self.__args[ b'Last-Modified' ], b', '.join("'%s'" % timefmt for timefmt in Params.TIMEFMT)))
+          raise ValueError("time data '%s' does not match formats %s" % (self.__args[ b'Last-Modified' ], b', '.join("'%s'" % timefmt for timefmt in OPTS.timefmt)))
       if b'Content-Length' in self.__args:
         self.size = int( self.__args[ b'Content-Length' ] )
       if self.__args.pop( b'Transfer-Encoding', None ) == b'chunked':
@@ -225,7 +226,7 @@ class FtpProtocol( Cache.File ):
 
     Cache.File.__init__( self, request.cache )
 
-    if Params.STATIC and self.full():
+    if OPTS.static and self.full():
       self.__socket = None
       self.open_full()
       self.Response = Response.DataResponse
@@ -256,7 +257,7 @@ class FtpProtocol( Cache.File ):
 
     assert not self.hasdata()
 
-    chunk = sock.recv( Params.MAXCHUNK )
+    chunk = sock.recv(OPTS.maxchunk)
     assert chunk, 'server closed connection prematurely'
     self.__recvbuf += chunk
     while b'\n' in self.__recvbuf:
@@ -337,7 +338,7 @@ class FtpProtocol( Cache.File ):
 
     assert code == 213, 'server sends %i; expected 213 (file status)' % code
     self.mtime = calendar.timegm( time.strptime( line.decode().rstrip(), '%Y%m%d%H%M%S' ) )
-    logging.info(f'Modification time: {time.strftime(Params.TIMEFMT[0], time.gmtime(self.mtime))}')
+    logging.info(f'Modification time: {time.strftime(OPTS.timefmt[0], time.gmtime(self.mtime))}')
     stat = self.partial()
     if stat:
       self.__sendbuf = b'REST %i\r\n' % stat.st_size

@@ -1,4 +1,5 @@
-import Params, time, traceback, logging
+import time, traceback, logging
+from Params import opts as OPTS
 
 
 class BlindResponse:
@@ -26,7 +27,7 @@ class BlindResponse:
   def recv( self, sock ):
 
     assert not self.Done
-    chunk = sock.recv( Params.MAXCHUNK )
+    chunk = sock.recv(OPTS.maxchunk)
     if chunk:
       self.__sendbuf += chunk
     elif not self.__sendbuf:
@@ -49,9 +50,9 @@ class DataResponse:
     except:
       args = {}
     args[ b'Connection' ] = b'close'
-    args[ b'Date' ] = time.strftime( Params.TIMEFMT[0], time.gmtime() ).encode()
+    args[ b'Date' ] = time.strftime(OPTS.timefmt[0], time.gmtime()).encode()
     if self.__protocol.mtime >= 0:
-      args[ b'Last-Modified' ] = time.strftime( Params.TIMEFMT[0], time.gmtime( self.__protocol.mtime ) ).encode()
+      args[ b'Last-Modified' ] = time.strftime(OPTS.timefmt[0], time.gmtime(self.__protocol.mtime)).encode()
     if self.__pos == 0 and self.__end == self.__protocol.size:
       head = b'HTTP/1.1 200 OK'
       if self.__protocol.size >= 0:
@@ -74,7 +75,7 @@ class DataResponse:
         logging.debug('> %s: %s', key.decode(), args[key].replace(b'\r\n', b' > ').decode())
 
     self.__sendbuf = b'\r\n'.join( [ head ] + list(map( b': '.join, iter(args.items()) )) + [ b'', b'' ] )
-    if Params.LIMIT:
+    if OPTS.limit:
       self.__nextrecv = 0
 
   def hasdata( self ):
@@ -95,7 +96,7 @@ class DataResponse:
       bytes = sock.send( self.__sendbuf )
       self.__sendbuf = self.__sendbuf[ bytes: ]
     else:
-      bytes = Params.MAXCHUNK
+      bytes = OPTS.maxchunk
       if 0 <= self.__end < self.__pos + bytes:
         bytes = self.__end - self.__pos
       chunk = self.__protocol.read( self.__pos, bytes )
@@ -104,16 +105,16 @@ class DataResponse:
 
   def needwait( self ):
 
-    return Params.LIMIT and max( self.__nextrecv - time.time(), 0 )
+    return OPTS.limit and max(0, self.__nextrecv - time.time())
 
   def recv( self, sock ):
 
     assert not self.Done
-    chunk = sock.recv( Params.MAXCHUNK )
+    chunk = sock.recv(OPTS.maxchunk)
     if chunk:
       self.__protocol.write( chunk )
-      if Params.LIMIT:
-        self.__nextrecv = time.time() + len( chunk ) / Params.LIMIT
+      if OPTS.limit:
+        self.__nextrecv = time.time() + len( chunk ) / OPTS.limit
     else:
       if self.__protocol.size >= 0:
         assert self.__protocol.size == self.__protocol.tell(), 'connection closed prematurely'
@@ -134,7 +135,7 @@ class ChunkedDataResponse( DataResponse ):
   def recv( self, sock ):
 
     assert not self.Done
-    chunk = sock.recv( Params.MAXCHUNK )
+    chunk = sock.recv(OPTS.maxchunk)
     assert chunk, 'chunked data error: connection closed prematurely'
     self.__recvbuf += chunk
     while b'\r\n' in self.__recvbuf:
