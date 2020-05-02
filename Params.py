@@ -61,9 +61,9 @@ def setup_io(outfile):
   if outfile:
     out = open(outfile, 'a')
 
-  #map opts.verbose to logging level: 0=info, 1=debug, 2=notset
+  #map OPTS.verbose to logging level: 0=info, 1=debug, 2=notset
   logging.basicConfig(stream=out,
-          level=max(1,10*(2-opts.verbose)),
+          level=max(1,10*(2-OPTS.verbose)),
           format='%(message)s', style='%')
   with open('/dev/null', 'r') as nul:
     os.dup2(nul.fileno(), sys.stdin.fileno())
@@ -114,22 +114,22 @@ def daemonize(output, pidfile):
 
 
 ### pseudo-main of this module:
-opts = parse_args()
-opts._logstream = setup_io(opts.daemon)
-opts.limit *= 1024
-opts.maxchunk = 1448 # maximum lan packet?
-opts.suffix = '.incomplete'
-opts.maxfilelen = os.pathconf('.', 'PC_NAME_MAX') - len(opts.suffix)
-opts.timefmt = (
+OPTS = parse_args()
+OPTS._logstream = setup_io(OPTS.daemon)
+OPTS.limit *= 1024
+OPTS.maxchunk = 1448 # maximum lan packet?
+OPTS.suffix = '.incomplete'
+OPTS.maxfilelen = os.pathconf('.', 'PC_NAME_MAX') - len(OPTS.suffix)
+OPTS.timefmt = (
         '%a, %d %b %Y %H:%M:%S GMT',
         '%a, %d %b %Y %H:%M:%S +0000 GMT',
         '%a, %d %b %Y %H:%M:%S +0000',
         )
 
 try:
-  os.chdir(opts.root)
+  os.chdir(OPTS.root)
 except Exception as e:
-  sys.exit(f'Error: invalid cache directory {opts.root} - ({e})')
-opts.listener = get_listener(opts.bind, opts.port)
-if opts.daemon:
-  daemonize(opts._logstream, opts.pidfile)
+  sys.exit(f'Error: invalid cache directory {OPTS.root} - ({e})')
+OPTS.listener = get_listener(OPTS.bind, OPTS.port)
+if OPTS.daemon:
+  daemonize(OPTS._logstream, OPTS.pidfile)

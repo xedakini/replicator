@@ -1,5 +1,5 @@
 import Protocol, logging, socket, os, fiber
-from Params import opts as OPTS
+from Params import OPTS
 
 class HttpRequest:
   def __init__( self, client ):

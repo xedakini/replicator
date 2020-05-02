@@ -1,6 +1,5 @@
 import time, traceback, logging
-from Params import opts as OPTS
-
+from Params import OPTS
 
 class BlindResponse:
   Done = False

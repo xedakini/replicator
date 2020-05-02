@@ -1,5 +1,5 @@
 import os, hashlib, logging
-from Params import opts as OPTS
+from Params import OPTS
 
 class File:
   size = -1

@@ -1,5 +1,5 @@
 import Response, Cache, time, socket, os, sys, re, calendar, logging
-from Params import opts as OPTS
+from Params import OPTS
 
 DNSCache = {}
 DEBUG2 = 5 #logging level 5 is lower priority than than regular logging.DEBUG(==10)
