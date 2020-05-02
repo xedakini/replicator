@@ -56,15 +56,13 @@ def parse_args():
 
 def setup_logging():
   global OPTS
-  OPTS._logstream = sys.stdout
-  if OPTS.daemon:
-    OPTS._logstream = open(OPTS.daemon, 'a')
+  OPTS._logstream = open(OPTS.daemon, 'a') if OPTS.daemon else sys.stdout
 
   #map OPTS.verbose to logging level: 0=info, 1=debug, 2=notset
   logging.basicConfig(stream=OPTS._logstream,
           level=max(1,10*(2-OPTS.verbose)),
           format='%(message)s', style='%')
- 
+
 def chdir():
   try:
     os.chdir(OPTS.root)
@@ -94,9 +92,7 @@ def daemonize():
 
   try:
     # attempt most os activity early, to catch errors before we fork
-    pidout = None
-    if OPTS.pidfile:
-      pidout = open(OPTS.pidfile, 'w') # open pid file for writing
+    pidout = OPTS.pidfile and open(OPTS.pidfile, 'w')
     os.setsid()
     # -rw-r--r-- / 0644 / u=rw,go=r
     os.umask(0o022)
