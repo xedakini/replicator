@@ -2,7 +2,6 @@ import os, hashlib, logging
 from Params import opts as OPTS
 
 class File:
-
   size = -1
   mtime = -1
 
@@ -31,15 +30,12 @@ class File:
     self.__file = None
 
   def partial( self ):
-
     return os.path.isfile(self.__temppath) and os.stat(self.__temppath)
 
   def full( self ):
-
     return os.path.isfile( self.__path ) and os.stat( self.__path )
 
   def open_new( self ):
-
     logging.info('Preparing new file in cache')
     try:
       dir = os.path.dirname(self.__path)
@@ -51,7 +47,6 @@ class File:
       self.__file = os.tmpfile()
 
   def open_partial( self, offset=-1 ):
-
     self.mtime = os.stat(self.__temppath).st_mtime
     self.__file = open(self.__temppath, 'ab+')
     if offset >= 0:
@@ -61,39 +56,32 @@ class File:
     logging.info(f'Resuming partial file in cache at byte {self.tell()}')
 
   def open_full( self ):
-
     self.mtime = os.stat( self.__path ).st_mtime
     self.__file = open( self.__path, 'rb' )
     self.size = self.tell()
     logging.info('Reading complete file from cache')
 
   def remove_full( self ):
-
     os.remove( self.__path )
     logging.info('Removed complete file from cache')
 
   def remove_partial( self ):
-
     logging.info('Removed partial file from cache')
     os.remove(self.__temppath)
 
   def read( self, pos, size ):
-
     self.__file.seek( pos )
     return self.__file.read( size )
 
   def write( self, chunk ):
-
     self.__file.seek( 0, 2 )
     return self.__file.write( chunk )
 
   def tell( self ):
-
     self.__file.seek( 0, 2 )
     return self.__file.tell()
 
   def close( self ):
-
     size = self.tell()
     self.__file.close()
     if self.mtime >= 0:
@@ -103,7 +91,6 @@ class File:
       logging.info(f'Finalized {self.__path}')
 
   def __del__( self ):
-
     try:
       self.close()
     except:

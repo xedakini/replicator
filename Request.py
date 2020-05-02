@@ -1,25 +1,19 @@
 import Protocol, logging, socket, os, fiber
 from Params import opts as OPTS
 
-
 class HttpRequest:
-
   def __init__( self, client ):
-
     self.client = client
 
   def recv( self ):
-
     chunk = self.client.recv(OPTS.maxchunk)
     assert chunk, 'client closed connection prematurely'
     return chunk
 
   def __iter__( self ):
-
     return self.__parse()
 
   def __parse( self ):
-
     recvbuf = b''
     while b'\n' not in recvbuf:
       yield fiber.RECV(self.client, OPTS.timeout)
@@ -46,7 +40,6 @@ class HttpRequest:
 
     self.__parse_header( header, args )
     self.__parse_args( args )
-
     if self.size:
       logging.debug('Opening temporary file for POST upload')
       self.body = os.tmpfile()
@@ -59,10 +52,8 @@ class HttpRequest:
       assert not recvbuf, 'client sends junk data'
 
   def __parse_header( self, line, args=None ):
-
     if not args:
       args=dict()
-
     fields = line.split()
     assert len( fields ) == 3, 'invalid header line: %r' % line.rstrip()
     cmd, url, dummy = fields
@@ -94,7 +85,6 @@ class HttpRequest:
       host, path = host.split( b'/', 1 )
     else:
       path = b''
-
     if b':' in host:
       host, port = host.split( b':' )
       port = int( port )
@@ -106,11 +96,9 @@ class HttpRequest:
     self.Protocol = proto
 
   def __parse_args( self, args ):
-
     size = int( args.get( b'Content-Length', 0 ) )
     if size:
       assert self.cmd == b'POST', '%s request conflicts with message body' % self.cmd
-
     if b'Range' in args:
       try:
         rangestr = args[ b'Range' ]
@@ -138,7 +126,6 @@ class HttpRequest:
     self.range = range
 
   def recvbuf( self ):
-
     lines = [ b'%s /%s HTTP/1.1' % ( self.cmd, self.path ) ]
     lines.extend( list(map( b': '.join, self.args.items() )) )
     lines.append( b'' )
@@ -151,10 +138,7 @@ class HttpRequest:
     return b'\r\n'.join( lines )
 
   def __hash__( self ):
-
     return hash( self.cache )
 
   def __eq__( self, other ):
-
     assert self.cache == other.cache
-

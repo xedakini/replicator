@@ -6,9 +6,7 @@ from Params import opts as OPTS
 DOWNLOADS = weakref.WeakValueDictionary()
 
 def Replicator( client, address ):
-
   logging.info(f'Accepted request from [{address[0]}:{address[1]}')
-
   request = Request.HttpRequest( client )
   for state in request:
     yield state
@@ -52,5 +50,6 @@ def Replicator( client, address ):
       response.recv( server )
 
   logging.info('Transaction successfully completed')
+
 
 fiber.spawn(Replicator, OPTS.listener, OPTS.debug)

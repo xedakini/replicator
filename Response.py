@@ -3,29 +3,23 @@ from Params import opts as OPTS
 
 
 class BlindResponse:
-
   Done = False
 
   def __init__( self, protocol, request ):
-
     self.__sendbuf = protocol.recvbuf()
 
   def hasdata( self ):
-
     return bool( self.__sendbuf )
 
   def send( self, sock ):
-
     assert not self.Done
     bytes = sock.send( self.__sendbuf )
     self.__sendbuf = self.__sendbuf[ bytes: ]
 
   def needwait( self ):
-
     return False
 
   def recv( self, sock ):
-
     assert not self.Done
     chunk = sock.recv(OPTS.maxchunk)
     if chunk:
@@ -35,11 +29,9 @@ class BlindResponse:
 
 
 class DataResponse:
-
   Done = False
 
   def __init__( self, protocol, request ):
-
     self.__protocol = protocol
     self.__pos, self.__end = request.range
     if self.__end == -1:
@@ -79,7 +71,6 @@ class DataResponse:
       self.__nextrecv = 0
 
   def hasdata( self ):
-
     if self.__sendbuf:
       return True
     elif self.__pos >= self.__protocol.tell():
@@ -90,7 +81,6 @@ class DataResponse:
       return False
 
   def send( self, sock ):
-
     assert not self.Done
     if self.__sendbuf:
       bytes = sock.send( self.__sendbuf )
@@ -104,11 +94,9 @@ class DataResponse:
     self.Done = not self.__sendbuf and ( self.__pos >= self.__protocol.size >= 0 or self.__pos >= self.__end >= 0 )
 
   def needwait( self ):
-
     return OPTS.limit and max(0, self.__nextrecv - time.time())
 
   def recv( self, sock ):
-
     assert not self.Done
     chunk = sock.recv(OPTS.maxchunk)
     if chunk:
@@ -127,13 +115,11 @@ class DataResponse:
 class ChunkedDataResponse( DataResponse ):
 
   def __init__( self, protocol, request ):
-
     DataResponse.__init__( self, protocol, request )
     self.__protocol = protocol
     self.__recvbuf = b''
 
   def recv( self, sock ):
-
     assert not self.Done
     chunk = sock.recv(OPTS.maxchunk)
     assert chunk, 'chunked data error: connection closed prematurely'
@@ -155,11 +141,9 @@ class ChunkedDataResponse( DataResponse ):
 
 
 class DirectResponse:
-
   Done = False
 
   def __init__( self, status, request ):
-
     lines = [ b'HTTP Replicator: %s' % status, b'', b'Requesting:' ]
     head, body = request.recvbuf().split( b'\r\n\r\n', 1 )
     for line in head.splitlines():
@@ -168,15 +152,12 @@ class DirectResponse:
       lines.append( b'+ Body: %i bytes' % len( body ) )
     lines.append( b'' )
     lines.append( traceback.format_exc().encode() )
-
     self.__sendbuf = b'HTTP/1.1 %s\r\nContent-Type: text/plain\r\n\r\n%s' % ( status, b'\n'.join( lines ) )
 
   def hasdata( self ):
-
     return bool( self.__sendbuf )
 
   def send( self, sock ):
-
     assert not self.Done
     bytes = sock.send( self.__sendbuf )
     self.__sendbuf = self.__sendbuf[ bytes: ]
@@ -184,23 +165,18 @@ class DirectResponse:
       self.Done = True
 
   def needwait( self ):
-
     return False
 
   def recv( self ):
-
     raise AssertionError
 
 
 class NotFoundResponse( DirectResponse ):
-
   def __init__( self, protocol, request ):
-
     DirectResponse.__init__( self, b'404 Not Found', request )
 
 
 class ExceptionResponse( DirectResponse ):
-
   def __init__( self, request ):
     logging.exception('ExceptionResponse invoked')
     DirectResponse.__init__( self, b'500 Internal Server Error', request )
