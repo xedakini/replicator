@@ -64,7 +64,6 @@ def fork(output, pidfile):
     pidout = None
     if pidfile:
       pidout = open(pidfile, 'w') # open pid file for writing
-    os.chdir(os.sep)
     os.setsid()
     # -rw-r--r-- / 0644 / u=rw,go=r
     os.umask(0o022)
@@ -105,6 +104,11 @@ def fork(output, pidfile):
 
 ### pseudo-main of this module:
 opts = parse_args()
+try:
+    os.chdir(opts.root)
+except Exception as e:
+    sys.exit('Error: invalid cache directory {opts.root} - ({e})')
+
 opts.listener = get_listener(opts.bind, opts.port)
 if opts.daemon:
   fork(opts.daemon, opts.pidfile)
@@ -112,7 +116,6 @@ if opts.daemon:
 
 
 # allow old names (for now)
-ROOT = os.path.realpath(opts.root) + os.sep
 VERBOSE = opts.verbose
 TIMEOUT = opts.timeout
 FLAT = opts.flat
@@ -120,13 +123,10 @@ STATIC = opts.static
 ONLINE = not opts.offline
 LIMIT = opts.limit * 1024
 
-if not os.path.isdir(ROOT):
-    sys.exit('Error: invalid cache directory {ROOT}')
-
 # some non-commandline parameters
 MAXCHUNK = 1448 # maximum lan packet?
 SUFFIX = '.incomplete'
-MAXFILELEN = os.pathconf(ROOT, 'PC_NAME_MAX') - len(SUFFIX)
+MAXFILELEN = os.pathconf('.', 'PC_NAME_MAX') - len(SUFFIX)
 TIMEFMT = (
         '%a, %d %b %Y %H:%M:%S GMT',
         '%a, %d %b %Y %H:%M:%S +0000 GMT',

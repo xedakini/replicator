@@ -6,7 +6,11 @@ class File:
   size = -1
   mtime = -1
 
-  def __init__( self, path ):
+  def __init__(self, origpath):
+    path = os.path.normpath(origpath)
+    sep = path.find('?')
+    if sep != -1:
+      path = path[:sep] + path[sep:].replace('/', '%2F')
 
     if Params.MAXFILELEN > -1:
       newpath = os.sep.join( item if len(item) <= Params.MAXFILELEN else
@@ -16,20 +20,20 @@ class File:
         print('Shortened path to %s characters' % '/'.join( str(len(w)) for w in newpath.split(os.sep) ))
         path = newpath
 
-    sep = path.find( '?' )
-    if sep != -1:
-      path = path[ :sep ] + path[ sep: ].replace( '/', '%2F' )
     if Params.FLAT:
       path = os.path.basename( path )
+    if path[0] == os.sep or path[:3] == '..'+os.sep:
+        raise AssertionError(f'requested cache path outside of cache root: {origpath}')
     if Params.VERBOSE:
       print('Cache position:', path)
 
-    self.__path = Params.ROOT + path
+    self.__path = path
+    self.__temppath = path + Params.SUFFIX
     self.__file = None
 
   def partial( self ):
 
-    return os.path.isfile( self.__path + Params.SUFFIX ) and os.stat( self.__path + Params.SUFFIX )
+    return os.path.isfile(self.__temppath) and os.stat(self.__temppath)
 
   def full( self ):
 
@@ -40,17 +44,17 @@ class File:
     print('Preparing new file in cache')
     try:
       dir = os.path.dirname(self.__path)
-      if not os.path.exists(dir):
+      if dir != '' and not os.path.exists(dir):
           os.makedirs(dir)
-      self.__file = open( self.__path + Params.SUFFIX, 'wb+' )
+      self.__file = open(self.__temppath, 'wb+')
     except Exception as e:
       print('Failed to open file:', e)
       self.__file = os.tmpfile()
 
   def open_partial( self, offset=-1 ):
 
-    self.mtime = os.stat( self.__path + Params.SUFFIX ).st_mtime
-    self.__file = open( self.__path + Params.SUFFIX, 'ab+' )
+    self.mtime = os.stat(self.__temppath).st_mtime
+    self.__file = open(self.__temppath, 'ab+')
     if offset >= 0:
       assert offset <= self.tell(), 'range does not match file in cache'
       self.__file.seek( offset )
@@ -72,7 +76,7 @@ class File:
   def remove_partial( self ):
 
     print('Removed partial file from cache')
-    os.remove( self.__path + Params.SUFFIX )
+    os.remove(self.__temppath)
 
   def read( self, pos, size ):
 
@@ -94,9 +98,9 @@ class File:
     size = self.tell()
     self.__file.close()
     if self.mtime >= 0:
-      os.utime( self.__path + Params.SUFFIX, ( self.mtime, self.mtime ) )
+      os.utime(self.__temppath, (self.mtime, self.mtime))
     if self.size == size:
-      os.rename( self.__path + Params.SUFFIX, self.__path )
+      os.rename(self.__temppath, self.__path)
       print('Finalized', self.__path)
 
   def __del__( self ):
