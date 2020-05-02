@@ -56,11 +56,23 @@ def get_listener(bindaddr, port):
     sys.exit(f'error: failed to create socket: {e}')
 
 
-def fork(output, pidfile):
+def setup_io(outfile):
+  out = sys.stdout
+  if outfile:
+    out = open(outfile, 'a')
+
+  #map opts.verbose to logging level: 0=info, 1=debug, 2=notset
+  logging.basicConfig(stream=out,
+          level=max(1,10*(2-opts.verbose)),
+          format='%(message)s', style='%')
+  with open('/dev/null', 'r') as nul:
+    os.dup2(nul.fileno(), sys.stdin.fileno())
+  return out
+
+
+def daemonize(output, pidfile):
   try:
     # attempt most os activity early, to catch errors before we fork
-    log = open(output, 'a')
-    nul = open('/dev/null', 'r')
     pidout = None
     if pidfile:
       pidout = open(pidfile, 'w') # open pid file for writing
@@ -78,7 +90,7 @@ def fork(output, pidfile):
     sys.exit(f'error: {e}')
 
   if pid:
-    #parent process waits for its child to create daemon and exit
+    #parent process waits for its child to (create daemon and exit), then exits
     cpid, status = os.wait()
     sys.exit(status >> 8)
 
@@ -97,13 +109,13 @@ def fork(output, pidfile):
       print(pid)
     sys.exit(0)
 
-  os.dup2(log.fileno(), sys.stdout.fileno())
-  os.dup2(log.fileno(), sys.stderr.fileno())
-  os.dup2(nul.fileno(), sys.stdin.fileno())
+  os.dup2(output.fileno(), sys.stdout.fileno())
+  os.dup2(output.fileno(), sys.stderr.fileno())
 
 
 ### pseudo-main of this module:
 opts = parse_args()
+opts._logstream = setup_io(opts.daemon)
 opts.limit *= 1024
 opts.maxchunk = 1448 # maximum lan packet?
 opts.suffix = '.incomplete'
@@ -114,14 +126,10 @@ opts.timefmt = (
         '%a, %d %b %Y %H:%M:%S +0000',
         )
 
-#map opts.verbose to logging level: 0=info, 1=debug, 2=notset
-logging.basicConfig(filename=opts.daemon,
-        level=max(1,10*(2-opts.verbose)),
-        format='%(message)s', style='%')
 try:
   os.chdir(opts.root)
 except Exception as e:
   sys.exit(f'Error: invalid cache directory {opts.root} - ({e})')
 opts.listener = get_listener(opts.bind, opts.port)
 if opts.daemon:
-  fork(opts.daemon, opts.pidfile)
+  daemonize(opts._logstream, opts.pidfile)
