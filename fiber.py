@@ -1,4 +1,4 @@
-import sys, os, select, time, socket, traceback
+import sys, os, select, time, traceback
 
 
 class SEND:
@@ -137,81 +137,13 @@ class DebugFiber( Fiber ):
     self.__newline = string.endswith( '\n' )
 
 
-def fork( output, pidfile ):
-
-  try:
-    # attempt most os activity early, to catch errors before we fork
-    log = open( output, 'a' )
-    nul = open( '/dev/null', 'r' )
-    pidout = None
-    if pidfile:
-      pidout = open(pidfile, 'w') # open pid file for writing
-    os.chdir( os.sep )
-    os.setsid()
-    # -rw-r--r-- / 0644 / u=rw,go=r
-    os.umask( 0o022 )
-
-    #first fork: create intermediate child process
-    pid = os.fork()
-  except IOError as e:
-    print('error: failed to open', e.filename)
-    sys.exit( 1 )
-  except OSError as e:
-    print('error: failed to fork process:', e.strerror)
-    sys.exit( 1 )
-  except Exception as e:
-    print('error:', e)
-    sys.exit( 1 )
-
-  if pid:
-    #parent process waits for child to create daemon and exit
-    cpid, status = os.wait()
-    sys.exit( status >> 8 )
-
-  try:
-    #second fork; will next orphan resulting granchild as daemon:
-    pid = os.fork()
-  except Exception as e:
-    print('error:', e)
-    sys.exit( 1 )
-
-  if pid:
-    #child successfully spawned grandchild; report grandchild pid and exit child
-    if pidout:
-      pidout.write(str(pid))
-      pidout.close()
-    else:
-      print(pid)
-    sys.exit( 0 )
-
-  os.dup2( log.fileno(), sys.stdout.fileno() )
-  os.dup2( log.fileno(), sys.stderr.fileno() )
-  os.dup2( nul.fileno(), sys.stdin.fileno()  )
-
-
-def spawn( generator, bindaddr, port, debug=False, log=None, pidfile=None ):
-
-  try:
-    addrs = socket.getaddrinfo(bindaddr, port, type=socket.SOCK_STREAM)
-    family, socktype, proto, canonname, sockaddr = addrs[0]
-    listener = socket.socket(family, socktype, proto)
-    listener.setblocking( 0 )
-    listener.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, listener.getsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR ) | 1 )
-    listener.bind(sockaddr[:2])
-    listener.listen( 5 )
-  except Exception as e:
-    print('error: failed to create socket:', e)
-    sys.exit( 1 )
-
-  if log:
-    fork( log, pidfile )
-
+def spawn(generator, listener, debug=False):
   if debug:
     myFiber = DebugFiber
   else:
     myFiber = GatherFiber
 
-  print('[ INIT ]', generator.__name__, 'started at %s:%i' % ( socket.gethostname(), port ))
+  print(f'[ INIT ] {generator.__name__} started at [%s]:%i' % listener.getsockname()[:2])
   try:
 
     fibers = []
