@@ -64,8 +64,6 @@ def setup_logging():
   logging.basicConfig(stream=OPTS._logstream,
           level=max(1,10*(2-OPTS.verbose)),
           format='%(message)s', style='%')
-  with open('/dev/null', 'r') as nul:
-    os.dup2(nul.fileno(), sys.stdin.fileno())
  
 def chdir():
   try:
@@ -89,8 +87,11 @@ def get_listener():
 
 
 def daemonize():
+  with open('/dev/null', 'r') as nul:
+    os.dup2(nul.fileno(), sys.stdin.fileno())
   if not OPTS.daemon:
     return
+
   try:
     # attempt most os activity early, to catch errors before we fork
     pidout = None
