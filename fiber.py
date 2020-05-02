@@ -20,7 +20,7 @@ class RECV:
 
 class WAIT:
   def __init__( self, timeout = None ):
-    self.expire = timeout and time.time() + timeout or None
+    self.expire = time.time() + timeout if timeout else None
 
   def __str__( self ):
     return 'WAIT(%s)' % ( self.expire and time.strftime( '%H:%M:%S', time.localtime( self.expire ) ) )

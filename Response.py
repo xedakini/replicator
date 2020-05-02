@@ -146,7 +146,7 @@ class DirectResponse:
     lines = [ b'HTTP Replicator: %s' % status, b'', b'Requesting:' ]
     head, body = request.recvbuf().split( b'\r\n\r\n', 1 )
     for line in head.splitlines():
-      lines.append( len( line ) > 78 and b'  %s...' % line[ :75 ] or b'  %s' % line )
+      lines.append(b'  %s'%line  if len(line)<=78 else  b'  %s...'%line[:75])
     if body:
       lines.append( b'+ Body: %i bytes' % len( body ) )
     lines.append( b'' )
