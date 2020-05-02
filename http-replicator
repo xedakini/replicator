@@ -6,7 +6,7 @@ from Params import OPTS
 DOWNLOADS = weakref.WeakValueDictionary()
 
 def Replicator( client, address ):
-  logging.info(f'Accepted request from [{address[0]}:{address[1]}')
+  logging.info(f'Accepted request from [{address[0]}]:{address[1]}')
   request = Request.HttpRequest( client )
   for state in request:
     yield state
