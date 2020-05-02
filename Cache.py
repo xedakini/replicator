@@ -6,10 +6,11 @@ class File:
   mtime = -1
 
   def __init__(self, origpath):
-    path = os.path.normpath(origpath)
+    path = origpath
     sep = path.find('?')
     if sep != -1:
       path = path[:sep] + path[sep:].replace('/', '%2F')
+    path = os.path.normpath(path)
 
     if OPTS.maxfilelen > -1:
       newpath = os.sep.join( item if len(item) <= OPTS.maxfilelen else
@@ -21,7 +22,7 @@ class File:
 
     if OPTS.flat:
       path = os.path.basename( path )
-    if path[0] == os.sep or path[:3] == '..'+os.sep:
+    if path[0] == os.sep or path == '..' or path[:3] == '..'+os.sep:
         raise AssertionError(f'requested cache path outside of cache root: {origpath}')
     logging.debug(f'Cache position: {path}')
 
