@@ -11,7 +11,7 @@ def connect( addr ):
     DNSCache[ addr ] = socket.getaddrinfo( addr[ 0 ], addr[ 1 ], socket.AF_UNSPEC, socket.SOCK_STREAM )
 
   family, socktype, proto, canonname, sockaddr = DNSCache[ addr ][ 0 ]
-  logging.info(f'Connecting to [{sockaddr[0]}]:[{sockaddr[1]}]')
+  logging.info(f'Connecting to [{sockaddr[0]}]:{sockaddr[1]}')
   sock = socket.socket( family, socktype, proto )
   sock.setblocking( 0 )
   sock.connect_ex( sockaddr )
