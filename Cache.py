@@ -62,10 +62,6 @@ class File:
     self.size = self.tell()
     logging.info('Reading complete file from cache')
 
-  def remove_full( self ):
-    os.remove( self.__path )
-    logging.info('Removed complete file from cache')
-
   def remove_partial( self ):
     logging.info('Removed partial file from cache')
     os.remove(self.__temppath)

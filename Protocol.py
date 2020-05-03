@@ -40,9 +40,6 @@ class BlindProtocol:
     if not self.__sendbuf:
       self.Response = Response.BlindResponse
 
-  def done( self ):
-    pass
-
 
 class HttpProtocol( Cache.File ):
   Response = None
