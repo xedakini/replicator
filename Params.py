@@ -17,62 +17,46 @@ def parse_args():
             raise argparse.ArgumentTypeError('value must be a positive number')
         return x
 
+    # yapf: disable
     parser = argparse.ArgumentParser(
         description='http-replicator: a caching http proxy')
     parser.add_argument(
-        '-p',
-        '--port',
-        type=port_number,
-        default=8080,
+        '-p', '--port', default=8080, type=port_number,
         help='listen on PORT for incoming connections (default=8080)')
-    parser.add_argument('-b',
-                        '--bind',
-                        default='::1',
-                        metavar='ADDRESS',
-                        help='bind server to ADDRESS (default=::1)')
     parser.add_argument(
-        '-r',
-        '--root',
-        default=os.getcwd(),
-        help=
-        'set cache base directory to ROOT, default is the current directory')
-    parser.add_argument('-v',
-                        '--verbose',
-                        default=0,
-                        action='count',
-                        help='show http headers and other info')
+        '-b', '--bind', default='::1', metavar='ADDRESS',
+        help='bind server to ADDRESS (default=::1)')
     parser.add_argument(
-        '-t',
-        '--timeout',
-        type=positive_number,
-        default=15,
-        help='break connection after TIMEOUT seconds of inactivity (default=15)'
-    )
+        '-r', '--root', default=os.getcwd(),
+        help='set cache base directory to ROOT, default is the current directory')
     parser.add_argument(
-        '--flat',
-        action='store_true',
+        '-v', '--verbose', default=0, action='count',
+        help='show http headers and other info')
+    parser.add_argument(
+        '-t', '--timeout', default=15, type=positive_number,
+        help='break connection after TIMEOUT seconds of inactivity (default=15)')
+    parser.add_argument(
+        '--flat', action='store_true',
         help='flat mode; cache all files in ROOT directory (dangerous!)')
-    parser.add_argument('--static',
-                        action='store_true',
-                        help='static mode; assume files never change')
-    parser.add_argument('--offline',
-                        action='store_true',
-                        help='offline mode; never connect to server')
-    parser.add_argument('--limit',
-                        type=float,
-                        default=0,
-                        help='cap download rate to LIMIT KiB/s')
-    parser.add_argument('--daemon',
-                        metavar='LOGFILE',
-                        help='route output to specified LOGFILE, and detach')
     parser.add_argument(
-        '--pidfile',
-        '--pid',
-        metavar='PIDFILE',
+        '--static', action='store_true',
+        help='static mode; assume files never change')
+    parser.add_argument(
+        '--offline', action='store_true',
+        help='offline mode; never connect to server')
+    parser.add_argument(
+        '--limit', default=0, type=float,
+        help='cap download rate to LIMIT KiB/s')
+    parser.add_argument(
+        '--daemon', metavar='LOGFILE',
+        help='route output to specified LOGFILE, and detach')
+    parser.add_argument(
+        '--pidfile', '--pid', metavar='PIDFILE',
         help='if --daemon is used, write pid of daemon to PIDFILE')
-    parser.add_argument('--debug',
-                        action='store_true',
-                        help='switch from "gather" to "debug" output module')
+    parser.add_argument(
+        '--debug', action='store_true',
+        help='switch from "gather" to "debug" output module')
+    # yapf: enable
 
     global OPTS
     OPTS = parser.parse_args()
