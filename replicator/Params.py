@@ -1,4 +1,8 @@
 import argparse, logging, os, sys
+try:
+    from aiohttp_socks import ProxyConnector
+except:
+    ProxyConnector = None
 
 
 def parse_args():
@@ -26,6 +30,9 @@ def parse_args():
     parser.add_argument(
         '--root', '-r', '-d', '--dir', metavar='ROOTDIR',
         help='set cache base directory to ROOTDIR (default is the current directory)')
+    parser.add_argument(
+        '--external', '-e', default=os.environ.get('http_proxy', None), metavar='PROXYURL',
+        help='forward requests through external proxy server')
     parser.add_argument(
         '--timeout', '-t', default=15, type=positive_number,
         help='break connection after TIMEOUT seconds of inactivity (default=15)')
@@ -62,6 +69,18 @@ def parse_args():
     OPTS.suffix = '.incomplete'
     OPTS.maxfilelen = os.pathconf('.', 'PC_NAME_MAX') - len(OPTS.suffix)
     OPTS.version = 'replicator/4.0alpha4'
+    OPTS.proxy = {}
+    if OPTS.external:
+        if ProxyConnector:
+            #user is running with aiohttp_socks (>= 0.3.1) installed:
+            OPTS.proxy = {'connector', ProxyConnector.from_url(OPTS.external)}
+        else:
+            #make an attempt to use aiohttp's built-in proxy handling
+            assert OPTS.external.startswith(
+                'http:'
+            ), 'Only http proxies are supported (consider installing aiohttp_socks>=0.3.1)'
+            os.environ['http_proxy'] = OPTS.external
+            OPTS.proxy = {'trust_env': True}
 
 
 def setup_logging():

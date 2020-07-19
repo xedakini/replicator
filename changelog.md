@@ -1,4 +1,4 @@
-2020-07-16 version 4.0alpha4
+2020-07-19 version 4.0alpha4
 ----------------------------
   * Major rewrite: use modern {asyncio and aiohttp} instead of custom {Python2
     compatible "fiber.py" and http protocol} code for task management
@@ -14,6 +14,15 @@
     unusable (the changes touched almost everything, so understanding the new
     code is easier than attempting to read the diff), I didn't bother trying to
     keep any tangentially related clean-ups separate
+  * Added ability to interject a proxy between the replicator and upstream HTTP
+    servers: set the http_proxy environment variable with a suitable URL for
+    the proxy, or pass the --external PROXY command-line argument (the latter
+    has precedence).  For best functionality the aiohttp_socks package (version
+    0.3.1 or higher, which includes the ProxyConnector class) should be
+    installed, giving support for  http and socks proxies; if no suitable
+    aiohttp_socks package is found, replicator will fall back to using the
+    native aiohttp proxy handling code (only supports http proxies).  Note that
+    the proxying of FTP requests remains a wishlist item.
 
 2020-04-22 version 4.0alpha3
 ----------------------------
