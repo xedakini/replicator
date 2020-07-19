@@ -1,14 +1,131 @@
 #! /usr/bin/env python
 
 import sys
-assert sys.version_info >= (3, 6)
+assert sys.version_info >= (3, 6)  #notably: f-strings, asyncio, aiohttp
 
-import Params
-Params.parse_args()
-Params.setup_logging()
-Params.chdir()
-listener = Params.get_listener()
-Params.daemonize()
+import asyncio, hashlib, logging, os, weakref
+from aiohttp import web
 
-import Replicator
-Replicator.run_event_loop(listener)
+from replicator.Params import OPTS
+from replicator.Cache import Cache
+from replicator.FtpProtocol import FtpProtocol
+from replicator.HttpProtocol import HttpProtocol, blind_transfer
+from replicator.Utils import daemonize, header_summary
+
+DOWNLOADS = weakref.WeakValueDictionary()
+
+
+class InboundRequest:
+    def __init__(self, request):
+        #extract the "interesting" parts of the request, and decide which proto will handle request
+        self.method, self.content = request.method.upper(), request.content
+        self.url, self.path = request.url, request.url.path
+        if self.url.scheme == 'http':
+            self.host, self.port = self.url.host, self.url.port
+            self.proto = HttpProtocol if self.method == 'GET' else None
+        elif self.url.scheme == '':  #assumed to be a transparent http proxy request
+            self.host, self.port = request.headers['host'], 80
+            if ':' in self.host:
+                self.host, self.port = self.host.rsplit(':')
+            self.proto = HttpProtocol if self.method == 'GET' else None
+        elif self.url.scheme == 'ftp':
+            assert self.method == 'GET', f'{self.method} request unsupported for ftp'
+            self.port = self.url.port or 21
+            self.proto, self.host = FtpProtocol, self.url.host
+        else:
+            raise AssertionError(f'invalid url: {self.url}')
+        assert self.host.find('/') == -1, f'Request for invalid host name: {self.host}'
+        assert 0 < int(self.port) < 65536, f'Request for invalid port number: {self.port}'
+        self.cacheid = f'{self.host}:{self.port}{self._normalize_path(self.path)}'
+        if OPTS.flat:
+            self.cacheid = os.path.basename(self.cacheid)
+        self.range = request.http_range or (0, None)
+        self.headers = request.headers.copy()
+        self.headers.update({'host': self.host})
+        for k in 'proxy-connection', 'proxy-authorization', 'keep-alive':
+            self.headers.pop(k, None)  #remove headers we don't want to propagate upstream
+        self.header_summary = header_summary(request.headers, heading='Request headers:')
+        logging.debug('%s', self.header_summary)
+
+    def _normalize_path(self, origpath):
+        path = os.sep + origpath
+        sep = path.find('?')
+        if sep != -1:
+            path = path[:sep] + path[sep:].replace('/', '%2F')
+        path = os.path.normpath(path)
+        maxlen = OPTS.maxfilelen
+        if 0 < maxlen:
+            path_parts = []
+            idxlimit = max(30, maxlen - 42)  #2 for '..' + 40 for hexdigest
+            for item in path.split(os.sep):
+                if maxlen < len(item):
+                    itemhash = hashlib.shake_128(item.encode())
+                    item = item[:idxlimit] + '..' + itemhash.hexdigest(20)
+                path_parts.append(item)
+            newpath = os.sep.join(path_parts)
+            if newpath != path:
+                logging.info('Shortened path to %s characters',
+                             '/'.join(str(len(w)) for w in path_parts))
+                path = newpath
+        return path
+
+
+async def serve_request(downstream):  #downstream is aiohttp.web.[Base]Request
+    rhost, rport = downstream.transport.get_extra_info('peername')[:2]
+    logging.debug('')
+    logging.info('Accepted request from [%s]:%d for %s', rhost, rport, downstream.url.human_repr())
+    inquest = InboundRequest(downstream)
+    try:
+        if inquest.proto is None:
+            await blind_transfer(inquest, web.StreamResponse(), downstream)
+            return
+        futs = []
+        cache = DOWNLOADS.get(inquest.cacheid, None)
+        if cache:  #re-use cache entry of an active download, if available
+            logging.debug('Joined running download')
+        else:
+            cache = DOWNLOADS[inquest.cacheid] = Cache(inquest.cacheid)
+            futs.append(asyncio.ensure_future(cache.writer(inquest.proto(inquest))))
+        outresp = web.StreamResponse()
+        rtask = cache.reader(outresp, downstream, inquest.range.start, inquest.range.stop)
+        futs.append(asyncio.ensure_future(rtask))
+        await asyncio.gather(*futs)
+    except Exception as msg:
+        show_backtrace = not isinstance(msg, AssertionError)
+        logging.warning('Error: %s', msg, exc_info=show_backtrace)
+        logging.warning('%s', inquest.header_summary)
+        blen, chunk = 0, True
+        while chunk:
+            chunk = await downstream.content.read(OPTS.maxchunk)
+            blen += len(chunk)
+        if blen:
+            logging.warning('+ Body of %d bytes', blen)
+        response = web.Response(content_type='text/plain')
+        response.set_status(500, 'Internal Server Error')
+        await response.prepare(downstream)
+        await response.write(inquest.header_summary.encode())
+
+
+async def startup():
+    runner = web.ServerRunner(web.Server(serve_request), access_log=None)
+    await runner.setup()
+    try:
+        site = web.TCPSite(runner, OPTS.bind, OPTS.port)
+        asyncio.ensure_future(site.start())
+    except Exception as e:
+        sys.exit(f'error: failed to create socket: {e}')
+
+
+# main - setup aiohttp and run its event loop:
+loop = asyncio.get_event_loop()
+loop.run_until_complete(startup())
+daemonize()  #note that this has been deferred until all startup has completed successfully
+try:
+    logging.info('Replicator started at [%s]:%d', OPTS.bind, OPTS.port)
+    loop.run_forever()
+except KeyboardInterrupt:
+    logging.info('Replicator terminated')
+    sys.exit(0)
+except:
+    logging.exception('Replicator crashed')
+    sys.exit(f'Replicator crashed')

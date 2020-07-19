@@ -1,3 +1,30 @@
+2020-07-16 version 4.0alpha4
+----------------------------
+  * Major rewrite: use modern {asyncio and aiohttp} instead of custom {Python2
+    compatible "fiber.py" and http protocol} code for task management
+  * as a side-effect of moving to aiohttp, at least one known bug was squashed:
+    replicator will now follow 301 redirects from upstream servers
+  * on the other hand, there is a known race condition in the current code;
+    testing has not yet shown it to loose data, but this bug does need to be
+    tracked down and squashed before a post-alpha release
+  * code has been re-arranged to place modules under a `replicator/`
+    subdirectory, for cleaner installation (e.g., under `site-perl/`)
+  * incidental code clean-up, mostly related to the asyncio+aiohttp rewrite,
+    but since the git diff associated with the associated commit was already
+    unusable (the changes touched almost everything, so understanding the new
+    code is easier than attempting to read the diff), I didn't bother trying to
+    keep any tangentially related clean-ups separate
+
+2020-04-22 version 4.0alpha3
+----------------------------
+  * convert to work with Python 3
+  * incorporated "transparent proxy" handling from branch
+    'transparent-requests' of
+    [zahradil's github fork](https://github.com/zahradil/replicator)
+  * transfer maintainership to from Gertjan van Zwieten to xedakini;
+    code's primary home is now
+    [xedakini's repository on github](https://github.com/xedakini/replicator)
+
 xxxx-xx-xx
 ----------
 
