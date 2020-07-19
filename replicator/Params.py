@@ -24,7 +24,7 @@ def parse_args():
         '--bind', '-b', default='::1', metavar='ADDRESS',
         help='bind server to ADDRESS (default=::1)')
     parser.add_argument(
-        '--root', '-r', default=os.getcwd(), metavar='ROOTDIR',
+        '--root', '-r', metavar='ROOTDIR',
         help='set cache base directory to ROOTDIR (default is the current directory)')
     parser.add_argument(
         '--timeout', '-t', default=15, type=positive_number,
@@ -75,7 +75,8 @@ def setup_logging():
 OPTS = None
 parse_args()
 setup_logging()
-try:
-    os.chdir(OPTS.root)
-except Exception as e:
-    sys.exit(f'Error: invalid cache directory {OPTS.root} ({e})')
+if OPTS.root:
+    try:
+        os.chdir(OPTS.root)
+    except Exception as e:
+        sys.exit(f'Error: invalid cache directory {OPTS.root} ({e})')
