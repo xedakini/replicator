@@ -19,7 +19,8 @@ class InboundRequest:
     def __init__(self, request):
         #extract the "interesting" parts of the request, and decide which proto will handle request
         self.method, self.content = request.method.upper(), request.content
-        self.url, self.path = request.url, request.url.path
+        self.url = request.url
+        self.path = request.headers.get('x-unique-cache-name', request.url.path)
         if self.url.scheme == 'http':
             self.host, self.port = self.url.host, self.url.port
             self.proto = HttpProtocol if self.method == 'GET' else None
