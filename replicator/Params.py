@@ -21,10 +21,10 @@ def parse_args():
         '--port', '-p', default=8080, type=port_number,
         help='listen on PORT for incoming connections (default=8080)')
     parser.add_argument(
-        '--bind', '-b', default='::1', metavar='ADDRESS',
+        '--bind', '-b', '-i', '--ip', default='::1', metavar='ADDRESS',
         help='bind server to ADDRESS (default=::1)')
     parser.add_argument(
-        '--root', '-r', metavar='ROOTDIR',
+        '--root', '-r', '-d', '--dir', metavar='ROOTDIR',
         help='set cache base directory to ROOTDIR (default is the current directory)')
     parser.add_argument(
         '--timeout', '-t', default=15, type=positive_number,
@@ -33,10 +33,10 @@ def parse_args():
         '--verbose', '-v', default=0, action='count',
         help='show transaction activity; use twice for debugging')
     parser.add_argument(
-        '--flat', action='store_true',
+        '--flat', '-f', action='store_true',
         help='flat mode: cache all files in ROOTDIR (dangerous!)')
     parser.add_argument(
-        '--static', action='store_true',
+        '--static', '-s', action='store_true',
         help='static mode: assume files never change')
     parser.add_argument(
         '--offline', action='store_true',
