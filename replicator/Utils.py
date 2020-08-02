@@ -12,7 +12,6 @@ def daemonize():
         # attempt most os activity early, to catch errors before we fork
         os.umask(0o022)  # -rw-r--r-- / 0644 / u=rw,go=r
         pidout = OPTS.pidfile and open(OPTS.pidfile, 'w')
-        os.setsid()
         #first fork: create intermediate child process
         pid = os.fork()
     except IOError as e:
@@ -45,6 +44,7 @@ def daemonize():
     #in new daemon grandchild; attach stdout and stderr to the log file descriptor
     os.dup2(OPTS._logstream.fileno(), sys.stdout.fileno())
     os.dup2(OPTS._logstream.fileno(), sys.stderr.fileno())
+    os.setsid()  #make the daemon its own session leader; should not fail, given its fresh pid
 
 
 def header_summary(headers, *, prefix='  ', maxlinelen=79, heading=None):
