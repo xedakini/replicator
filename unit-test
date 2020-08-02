@@ -262,7 +262,7 @@ for NUM; do
       http_proxy_download "$URL_HTTP" out0
       sleep 2 #avoid "joining running download" (race)
       http_proxy_download "$URL_HTTP" out
-      check_log "serving directly from cache without consulting server" "Static mode; serving file directly from cache"
+      check_log "serving directly from cache without consulting server" "Serving static file directly from cache"
       check_equal "cached and served file are equal" cache/"$BASE_HTTP" out
       endtest
       ;;

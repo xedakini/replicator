@@ -54,7 +54,7 @@ class Cache:
         if OPTS.static or OPTS.offline:
             fd = self._tryopen(self.filepath, os.O_RDONLY)
             if fd is not None:
-                logging.debug('Static mode; serving file directly from cache')
+                logging.info('Serving static file directly from cache')
                 return fd
         assert not OPTS.offline, f'operating in off-line mode'
         self.is_writable = True
