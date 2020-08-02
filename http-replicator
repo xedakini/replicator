@@ -53,6 +53,8 @@ class InboundRequest:
         sep = path.find('?')
         if sep != -1:
             path = path[:sep] + path[sep:].replace('/', '%2F')
+        if path[-13:] == '.__download__':  #gentoo adds this to x-unique-cache-name
+            path = path[:-13]
         path = os.path.normpath(path)
         maxlen = OPTS.maxfilelen
         if 0 < maxlen:
