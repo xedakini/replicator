@@ -25,8 +25,9 @@ def parse_args():
         '--port', '-p', default=8080, type=port_number,
         help='listen on PORT for incoming connections (default=8080)')
     parser.add_argument(
-        '--bind', '-b', default='::1', metavar='ADDRESS',
-        help='bind server to ADDRESS (default=::1)')
+        '--bind', '-b', metavar='ADDRESS', action='append',
+        help='bind server to ADDRESS (option may be specified more than once '
+             'for a list of addresses; default if no addresses specified is ::1)')
     parser.add_argument(
         '--root', '-r', '-d', '--dir', metavar='ROOTDIR',
         help='set cache base directory to ROOTDIR (default is the current directory)')
@@ -64,6 +65,8 @@ def parse_args():
 
     global OPTS
     OPTS = parser.parse_args()
+    if not OPTS.bind:
+        OPTS.bind = ['::1']
     OPTS.limit *= 1024
     OPTS.maxchunk = 8192
     OPTS.suffix = '.incomplete'

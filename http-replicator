@@ -113,8 +113,9 @@ async def startup():
     runner = web.ServerRunner(web.Server(serve_request), access_log=None)
     await runner.setup()
     try:
-        site = web.TCPSite(runner, OPTS.bind, OPTS.port)
-        asyncio.ensure_future(site.start())
+        for addr in OPTS.bind:
+            site = web.TCPSite(runner, addr, OPTS.port)
+            asyncio.ensure_future(site.start())
     except Exception as e:
         sys.exit(f'error: failed to create socket: {e}')
 
@@ -124,7 +125,7 @@ loop = asyncio.get_event_loop()
 loop.run_until_complete(startup())
 daemonize()  #note that this has been deferred until all startup has completed successfully
 try:
-    logging.info('Replicator started at [%s]:%d', OPTS.bind, OPTS.port)
+    logging.info('Replicator started at %s, port %d', OPTS.bind, OPTS.port)
     loop.run_forever()
 except KeyboardInterrupt:
     logging.info('Replicator terminated')
