@@ -85,7 +85,7 @@ def parse_args():
     if OPTS.external:
         if ProxyConnector:
             #user is running with aiohttp_socks (>= 0.3.1) installed:
-            OPTS.proxy = {'connector', ProxyConnector.from_url(OPTS.external)}
+            OPTS.proxy = {'connector': ProxyConnector.from_url(OPTS.external)}
         else:
             #make an attempt to use aiohttp's built-in proxy handling
             assert OPTS.external.startswith(
