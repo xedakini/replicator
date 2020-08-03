@@ -1,9 +1,5 @@
 import argparse, logging, os, sys
 from ipaddress import ip_network
-try:
-    from aiohttp_socks import ProxyConnector
-except:
-    ProxyConnector = None
 
 
 def parse_args():
@@ -83,10 +79,11 @@ def parse_args():
     OPTS.version = 'replicator/4.0alpha4'
     OPTS.proxy = {}
     if OPTS.external:
-        if ProxyConnector:
+        try:
+            from aiohttp_socks import ProxyConnector
             #user is running with aiohttp_socks (>= 0.3.1) installed:
             OPTS.proxy = {'connector': ProxyConnector.from_url(OPTS.external)}
-        else:
+        except:
             #make an attempt to use aiohttp's built-in proxy handling
             assert OPTS.external.startswith(
                 'http:'
