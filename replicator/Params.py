@@ -1,4 +1,5 @@
 import argparse, logging, os, sys
+from ipaddress import ip_network
 try:
     from aiohttp_socks import ProxyConnector
 except:
@@ -35,6 +36,11 @@ def parse_args():
         '--external', '-e', default=os.environ.get('http_proxy', None), metavar='PROXYURL',
         help='forward requests through external proxy server')
     parser.add_argument(
+        '--ip', '-i', default=[], metavar='CIDR', action='append',
+        help='restrict incoming requests to be from specified CIDR '
+             '(option may be repeated to allow multiple CIDRs; '
+             'default if no --ip option given is to allow all requests)')
+    parser.add_argument(
         '--timeout', '-t', default=15, type=positive_number,
         help='break connection after TIMEOUT seconds of inactivity (default=15)')
     parser.add_argument(
@@ -67,6 +73,9 @@ def parse_args():
     OPTS = parser.parse_args()
     if not OPTS.bind:
         OPTS.bind = ['::1']
+    OPTS.allowed_CIDRs = []
+    for cidr in OPTS.ip:
+        OPTS.allowed_CIDRs.append(ip_network(cidr))
     OPTS.limit *= 1024
     OPTS.maxchunk = 8192
     OPTS.suffix = '.incomplete'

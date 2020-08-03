@@ -4,6 +4,7 @@ import sys
 assert sys.version_info >= (3, 6)  #notably: f-strings, asyncio, aiohttp
 
 import asyncio, hashlib, logging, os, weakref
+from ipaddress import ip_address
 from aiohttp import web
 
 from replicator.Params import OPTS
@@ -73,9 +74,23 @@ class InboundRequest:
         return path
 
 
+def allowed_remote(ip, cidr_list):
+    ip = ip_address(ip)
+    for cidr in cidr_list:
+        if ip in cidr:
+            return True
+    return False
+
+
 async def serve_request(downstream):  #downstream is aiohttp.web.[Base]Request
     rhost, rport = downstream.transport.get_extra_info('peername')[:2]
     logging.debug('')
+    if OPTS.allowed_CIDRs and not allowed_remote(rhost, OPTS.allowed_CIDRs):
+        logging.info('Rejecting request from [%s]:%d due to --ip restriction', rhost, rport)
+        response = web.Response(status=403)
+        await response.prepare(downstream)
+        await response.write(f'access from {rhost} is prohibited'.encode())
+        return
     logging.info('Accepted request from [%s]:%d for %s', rhost, rport, downstream.url.human_repr())
     inquest = InboundRequest(downstream)
     try:
