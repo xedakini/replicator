@@ -139,7 +139,11 @@ arguments can be used to change this default behavior:
         all requests, regardless of source IP address.
 
        --alias MAPPING, -a MAPPING
-        ((coming soon; not yet implemented))
+        A mapping is a sequence DESTPATH:PREFIX1:PREFIX2:..., where if
+        the unaliased cache path begins with PREFIX1 or PREFIX2 or ...,
+        then said prefix gets replaced by DESTPATH.  More than one --alias
+        mapping may be given.  Only the first PREFIX match found (in the
+        order given on the command line) will be rewritten.
 
        -v --verbose
         Show http headers and other info

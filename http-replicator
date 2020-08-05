@@ -71,6 +71,10 @@ class InboundRequest:
                 logging.info('Shortened path to %s characters',
                              '/'.join(str(len(w)) for w in path_parts))
                 path = newpath
+        for pair in OPTS.aliasmap:
+            if os.path.commonprefix((path, pair[0])) == pair[0]:
+                path = pair[1] + path[len(pair[0]):]
+                break  #stoping after first match seems the least surprising way to do this
         return path
 
 
