@@ -84,7 +84,12 @@ def parse_args():
             #user is running with aiohttp_socks (>= 0.3.1) installed:
             OPTS.proxy = {'connector': ProxyConnector.from_url(OPTS.external)}
         except:
-            raise AssertionError('--external option currently requires aiohttp_socks>=0.3.1')
+            #make an attempt to use aiohttp's built-in proxy handling
+            assert OPTS.external.startswith(
+                'http:'
+            ), 'Only http proxies are supported (consider installing aiohttp_socks>=0.3.1)'
+            os.environ['http_proxy'] = OPTS.external
+            OPTS.proxy = {'trust_env': True}
 
 
 def setup_logging():

@@ -25,7 +25,7 @@ This version of HTTP Replicator has the following dependencies:
 
   * python, version 3.6 or higher (only tested against python 3.7)
   * aiohttp (only tested against aiohttp 3.6.2), and its many dependencies
-  * aiohttp-socks is required if the --external PROXY option is used
+  * aiohttp-socks is required for SOCKS proxies using the --external PROXY
     (otherwise it is not required); if used, version 0.3.1 or higher
     is needed (only tested against aiohttp-socks 0.5.3)
 
@@ -130,7 +130,7 @@ arguments can be used to change this default behavior:
 
        --external PROXYURL, -e PROXYURL
         Forward requests through an external proxy server; aiohttp-socks
-        (version 0.3.1 or greater) must be installed for this to work.
+        (version 0.3.1 or greater) is required to use SOCKS proxies
 
        --ip CIDR, -i CIDR
         Restrict incoming requests to be from specified CIDR (IPv4 or
