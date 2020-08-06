@@ -37,6 +37,13 @@ def parse_args():
              '(option may be repeated to allow multiple CIDRs; '
              'default if no --ip option given is to allow all requests)')
     parser.add_argument(
+        '--alias', '-a', default=[], metavar='MAPPING', action='append',
+        help='alias specified hosts to alternative cache directories; '
+             'format of MAPPING is cachepath:urlprefix1:urlprefix2:...; '
+             'for each urlprefix, route dowloads to cachepath; '
+             'option may be repeated for multiple mappings '
+             '(first matching urlprefix, in command-line order, wins)')
+    parser.add_argument(
         '--timeout', '-t', default=15, type=positive_number,
         help='break connection after TIMEOUT seconds of inactivity (default=15)')
     parser.add_argument(
@@ -72,6 +79,12 @@ def parse_args():
     OPTS.allowed_CIDRs = []
     for cidr in OPTS.ip:
         OPTS.allowed_CIDRs.append(ip_network(cidr))
+    OPTS.aliasmap = []
+    for alias in OPTS.alias:
+        maplist = alias.split(':')
+        destdir = maplist.pop(0)
+        for prefix in maplist:
+            OPTS.aliasmap.append((prefix, destdir))
     OPTS.limit *= 1024
     OPTS.maxchunk = 8192
     OPTS.suffix = '.incomplete'
